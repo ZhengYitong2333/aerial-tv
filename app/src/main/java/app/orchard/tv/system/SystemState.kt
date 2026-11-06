@@ -1,5 +1,8 @@
 package app.orchard.tv.system
 
+import androidx.core.net.toUri
+
+import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -100,7 +103,7 @@ object SystemProbe {
                 val wm = context.applicationContext.getSystemService<WifiManager>()
                 @Suppress("DEPRECATION")
                 val info = wm?.connectionInfo
-                val ssid = info?.ssid?.trim('"')?.takeUnless { it.isBlank() || it == WifiManager.UNKNOWN_SSID.trim('<', '>') || it == "<unknown ssid>" }
+                val ssid = info?.ssid?.trim('"')?.takeUnless { it.isBlank() || it == "unknown ssid" || it == "<unknown ssid>" }
                 val level = if (info == null) 1f else if (Build.VERSION.SDK_INT >= 30) {
                     wm.calculateSignalLevel(info.rssi) / wm.maxSignalLevel.coerceAtLeast(1).toFloat()
                 } else {
@@ -190,12 +193,18 @@ object SystemProbe {
         pkg in SETTINGS_PACKAGES ||
             context.packageManager.resolveActivity(Intent(Settings.ACTION_SETTINGS), 0)?.activityInfo?.packageName == pkg
 
-    private val SETTINGS_PACKAGES = setOf("com.android.settings", "com.android.tv.settings", "com.xiaomi.mitv.settings", "com.tcl.settings", "com.helios.setting", "com.haier.tv.menusetting", ChanghongSettings.PACKAGE)
+    private val SETTINGS_PACKAGES = setOf("com.android.settings", "com.android.tv.settings", "com.android.newsettings", "com.xiaomi.mitv.settings", "com.tcl.settings", "com.helios.setting", "com.haier.tv.menusetting", ChanghongSettings.PACKAGE)
 
     fun settingsTileIntent(context: Context, pkg: String): Intent? =
         if (pkg in setOf("com.android.settings", "com.android.tv.settings", ChanghongSettings.PACKAGE)) {
             ChanghongSettings.intent(context)
         } else null
+
+    /** Inputs remain usable with a PIN; the OEM settings service also hosts protected pages. */
+    internal fun isSettingsIntent(context: Context, intent: Intent): Boolean =
+        if (intent.component == XGIMI_SETTINGS) intent.getStringExtra("data") != XGIMI_SOURCE_PAGE
+        else (intent.component?.packageName ?: context.packageManager.resolveActivity(intent, 0)?.activityInfo?.packageName)
+            ?.let { isSettingsApp(context, it) } == true
 
     fun settingsIntent(context: Context): Intent =
         ChanghongSettings.intent(context)
@@ -260,7 +269,7 @@ object SystemProbe {
             // PPTV K55U27 (MStar, Android 6): its settings app answers no standard action (issue #264).
             Intent(Intent.ACTION_MAIN).setComponent(ComponentName("com.pptv.setting", "com.pptv.setting.root.SettingsActivity")),
             // XGIMI GMUI (Z7X, Android 9) neither; its settings open by link (issue #241).
-            Intent(Intent.ACTION_VIEW, Uri.parse("Settings://com.xgimi.misckey.main/mainPage")),
+            Intent(Intent.ACTION_VIEW, "Settings://com.xgimi.misckey.main/mainPage".toUri()),
             WHALEY_SETTINGS,
         )
 
@@ -306,7 +315,7 @@ object SystemProbe {
             Intent(Settings.ACTION_WIFI_SETTINGS),
             // PPTV K55U27 and XGIMI Z7X answer no standard Wi-Fi action (issues #264, #241).
             Intent("com.pptv.intent.action.WIFI_ACTIVITY").setComponent(ComponentName("com.pptv.setting", "com.pptv.setting.wifi.WifiWorkActivity")),
-            Intent(Intent.ACTION_VIEW, Uri.parse("Settings://com.xgimi.settings.net/wifi_misckey")),
+            Intent(Intent.ACTION_VIEW, "Settings://com.xgimi.settings.net/wifi_misckey".toUri()),
             Intent(Settings.ACTION_SETTINGS),
             // TCL tcl_m7642 (Android 9) answers neither Wi-Fi nor settings actions (issue #15).
             Intent(Intent.ACTION_MAIN).setComponent(ComponentName("com.tcl.settings", "com.tcl.settings.ui.MainActivity")),
@@ -328,6 +337,13 @@ object SystemProbe {
 
     private val XGIMI_SETTINGS = ComponentName("com.android.newsettings", "com.xgimi.newsettings.SettingService")
     private const val XGIMI_NETWORK_PAGE = "Settings://com.xgimi.settings.net/wifi_misckey"
+    private const val XGIMI_SOURCE_PAGE = "Settings://com.xgimi.settings.signalSource/hdmi_misckey"
+    private const val XGIMI_PICTURE_PAGE = "Settings://com.xgimi.settings.brightness/brightness_misckey"
+
+    internal fun isXgimiSettingsIntent(intent: Intent): Boolean = intent.component == XGIMI_SETTINGS
+
+    internal fun hasXgimiSettings(context: Context): Boolean =
+        xgimiSettingsIntent(context, XGIMI_PICTURE_PAGE) != null
 
     /**
      * The DLP light-engine levels XGIMI's HAL steps through (1..10, 10 being full); measured on a Z7X
@@ -400,8 +416,17 @@ object SystemProbe {
             .putExtra("data", page)
             .putExtra("packageName", "com.xgimi.misckey")
             .putExtra("unlocked", false)
-        return intent.takeIf { context.packageManager.resolveService(it, 0)?.serviceInfo?.exported == true }
+        val info = context.packageManager.resolveService(intent, 0)?.serviceInfo ?: return null
+        return intent.takeIf {
+            info.exported && info.enabled && info.applicationInfo.enabled &&
+                (info.permission == null || ContextCompat.checkSelfPermission(context, info.permission) == PackageManager.PERMISSION_GRANTED)
+        }
     }
+
+    private fun openXgimiPage(context: Context, page: String): Boolean =
+        xgimiSettingsIntent(context, page)?.let { intent ->
+            runCatching { context.startService(intent) }.getOrNull() != null
+        } ?: false
 
     fun startSettingsIntent(context: Context, intent: Intent) {
         if (HisenseSources.open(context, intent)) return
@@ -427,10 +452,14 @@ object SystemProbe {
         val activity = if (intent.component == XGIMI_SETTINGS) {
             val shown = runCatching { context.startService(intent) }.getOrNull() != null
             if (shown) return
-            if (intent.getStringExtra("data") == XGIMI_NETWORK_PAGE) {
-                networkSettingsActivityIntents(context).first()
-            } else {
-                settingsActivityIntent(context)
+            when (intent.getStringExtra("data")) {
+                XGIMI_NETWORK_PAGE -> networkSettingsActivityIntents(context).first()
+                XGIMI_SOURCE_PAGE -> {
+                    // A failed input switch must not silently open the general settings page.
+                    if (openInputPicker(context)) return
+                    throw ActivityNotFoundException("The TV input service could not be opened")
+                }
+                else -> settingsActivityIntent(context)
             }
         } else intent
         context.startActivity(settingsLaunchIntent(context, activity))
@@ -472,6 +501,7 @@ object SystemProbe {
         ChanghongSettings.intent(context, ChanghongSettings.PICTURE)?.let {
             if (ChanghongSettings.open(context, it)) return true
         }
+        if (openXgimiPage(context, XGIMI_PICTURE_PAGE)) return true
         val backlight = Intent("com.xiaomi.mitv.settings.BACKLIGHT_POPUP")
             .setComponent(ComponentName("com.xiaomi.mitv.settings", "com.xiaomi.mitv.settings.SettingsBroadcastReceiver"))
         if (context.packageManager.queryBroadcastReceivers(backlight, 0).any { it.activityInfo.exported }) {
@@ -527,9 +557,6 @@ object SystemProbe {
             )
         }.isSuccess
     }
-
-    /** XGIMI's own source page, opened through its settings service; see [openInputPicker]. */
-    private const val XGIMI_SOURCE_PAGE = "Settings://com.xgimi.settings.signalSource/hdmi_misckey"
 
     /**
      * Opens the TV's own input picker, for TVs whose inputs Android does not list. TCL MT5879 keeps
@@ -998,7 +1025,7 @@ object SystemProbe {
     }
 
     private const val SKYWORTH_PLAYER = "com.skyworth.tv"
-    private val SKYWORTH_SOURCES = Uri.parse("content://com.skyworth.tv.sdk.provider/system/source_list")
+    private val SKYWORTH_SOURCES = "content://com.skyworth.tv.sdk.provider/system/source_list".toUri()
 
     /**
      * Skyworth's Coocaa firmware (75A7D, RTD2885N, Android 11) lists no framework inputs either.

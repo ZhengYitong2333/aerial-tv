@@ -50,9 +50,20 @@ export ANDROID_SERIAL="$SERIAL"
 # Let go of the TV at the end unless it was connected before: some TVs take one computer at a time,
 # and the phone apps the owner uses next (甲壳虫 and the like) could not connect until this
 # computer's adb server dropped it (issue #764). STAY_CONNECTED=1 keeps it.
-if [ "${STAY_CONNECTED:-0}" != 1 ] && ! adb devices 2>/dev/null | grep -q "^$SERIAL[[:space:]]"; then
-  trap 'adb disconnect "$SERIAL" >/dev/null 2>&1 || true; [ -n "${MAIN_SERIAL:-}" ] && adb disconnect "$MAIN_SERIAL" >/dev/null 2>&1; true' EXIT
-fi
+DISCONNECT_AT_EXIT=0
+if [ "${STAY_CONNECTED:-0}" != 1 ] && ! adb devices 2>/dev/null | grep -q "^$SERIAL[[:space:]]"; then DISCONNECT_AT_EXIT=1; fi
+# A snapshot taken before anything was changed on the TV is dropped again (restore-state.sh).
+SNAPSHOT_CREATED=0
+CONFIG_STARTED=0
+on_exit() {
+  if [ "$SNAPSHOT_CREATED" = 1 ] && [ "$CONFIG_STARTED" = 0 ]; then clear_restore_state || true; fi
+  if [ "$DISCONNECT_AT_EXIT" = 1 ]; then
+    adb disconnect "$SERIAL" >/dev/null 2>&1 || true
+    [ -n "${MAIN_SERIAL:-}" ] && adb disconnect "$MAIN_SERIAL" >/dev/null 2>&1
+  fi
+  true
+}
+trap on_exit EXIT
 adb connect "$SERIAL" >/dev/null
 STATE=$(adb get-state 2>&1 || true)
 if [ "$STATE" != device ]; then
@@ -244,6 +255,10 @@ if [ "$FLAVOR" = repair ]; then
   exit 1
 fi
 
+# Snapshot before installing too: a first install must not obscure the previous HOME selection.
+source tools/restore-state.sh
+snapshot_state
+
 # Path of the APK for a flavor: APK_FILE, a local build, or the latest release.
 build() {
   local flavor=$1
@@ -268,7 +283,10 @@ version_code() {   # versionCode of the APK on disk; empty without the Android S
 }
 
 installed_code() {
-  adb shell dumpsys package "$PKG" 2>/dev/null | sed -n 's/.*versionCode=\([0-9]*\).*/\1/p' | head -1
+  local info
+  # A first install has no package yet. Some firmwares return nonzero for that query.
+  info=$(adb shell dumpsys package "$PKG" 2>/dev/null) || return 0
+  printf '%s\n' "$info" | sed -n 's/.*versionCode=\([0-9]*\).*/\1/p' | head -1
 }
 
 # Installed by now: the expected versionCode when known, else any change from before.
@@ -376,6 +394,7 @@ if [ "$RC" -ne 0 ] || ! printf '%s\n' "$OUT" | grep -q Success; then
   esac
 fi
 
+CONFIG_STARTED=1
 grant
 # Android 9 on Xiaomi MiTV-MFTP0 reports success but never binds it (issue #72): low-RAM devices
 # get no notification listeners at all. Aerial's sync adapter brings it back there instead, later.
@@ -429,13 +448,6 @@ fi
 # straight after the install it was left interpreted ("verify").
 sleep 5
 adb shell cmd package compile -m speed -f "$PKG" >/dev/null 2>&1 || true
-
-# With CATEGORY_DEFAULT, as Home itself is resolved: on XGIMI m7642 (Android 9) a query without it
-# lists Settings' FallbackHome too, and Android drops the default Home over the changed set (#767).
-resolve_home() {
-  adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME -c android.intent.category.DEFAULT \
-    | tail -n 1 | tr -d '\r'
-}
 
 if [ "$FLAVOR" = standard ]; then
   # Hisense VIDAA (MT9653, Android 11, #40) starts the launcher named in this property by explicit

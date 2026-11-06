@@ -1,5 +1,7 @@
 package app.orchard.tv.ui.home
 
+import androidx.core.graphics.createBitmap
+
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -565,7 +567,7 @@ private fun plateTinted(src: ImageBitmap): ImageBitmap {
 private fun bakePlate(glass: ImageBitmap, screen: Size, plate: Rect, radius: Float, rim: Float, edge: Boolean = true): ImageBitmap {
     val w = plate.width.roundToInt().coerceAtLeast(1)
     val h = plate.height.roundToInt().coerceAtLeast(1)
-    val out = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+    val out = createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
     val canvas = android.graphics.Canvas(out)
     canvas.drawBitmap(
         glass.asAndroidBitmap(),

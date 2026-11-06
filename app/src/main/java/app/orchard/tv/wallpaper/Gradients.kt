@@ -1,5 +1,7 @@
 package app.orchard.tv.wallpaper
 
+import androidx.core.graphics.withSave
+
 import android.graphics.Bitmap
 import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
@@ -192,24 +194,25 @@ object Gradients {
             drawPath(dune, paint(LinearGradient(fromX, 0f, w - fromX, 0f,
                 intArrayOf(c and 0xFFFFFF, c and 0xFFFFFF, c), floatArrayOf(0f, 0.35f, 1f), Shader.TileMode.CLAMP)))
             // A bright crest line where the light grazes the top.
-            save()
+            withSave {
             translate(0f, h * 0.004f)
             drawPath(ridge(w, h, base, h * (0.06f - i * 0.008f), 41 + i * 17, crestOnly = true), Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 style = Paint.Style.STROKE
                 strokeWidth = h * 0.003f
                 color = 0x33FFFFFF
             })
-            restore()
+            }
         }
     }
 
     private fun Canvas.sea(w: Float, h: Float, sky: IntArray, glow: Long, glowA: Float, water: IntArray, sun: Long, glint: Long) {
         val horizon = h * 0.58f
         drawRect(0f, 0f, w, horizon, paint(vertical(0f, horizon, sky)))
-        save(); clipRect(0f, 0f, w, horizon)
+        withSave {
+            clipRect(0f, 0f, w, horizon)
         glowAt(w, h, w * 0.5f, horizon, w * 0.5f, glow, glowA)
         glowAt(w, h, w * 0.5f, horizon, w * 0.06f, sun, 1f)
-        restore()
+        }
         drawRect(0f, horizon, w, h, paint(vertical(horizon, h, water)))
         // The sun's path on the water: lines that widen and fade toward the viewer.
         val p = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -238,10 +241,10 @@ object Gradients {
                 lineTo(w + edge, h + edge); close()
             }
             // Each band casts a soft shadow up onto the one behind it.
-            save()
+            withSave {
             translate(0f, -6 * unit)
             drawPath(path, shadow)
-            restore()
+            }
             drawPath(path, paint(vertical(y0 - h * 0.1f, y0 + h * 0.5f, pair(b))))
         }
     }

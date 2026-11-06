@@ -1,5 +1,7 @@
 package app.orchard.tv.system
 
+import androidx.core.content.edit
+
 import android.content.Context
 import android.os.Build
 import android.os.SystemClock
@@ -10,7 +12,6 @@ import java.io.PrintWriter
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import java.util.concurrent.Executors
 
 /**
  * A log of its own for firmwares whose logcat shows nothing from apps (Skyworth 7T631_T60,
@@ -19,18 +20,20 @@ import java.util.concurrent.Executors
  *   adb shell dumpsys activity app.orchard.tv/.MainActivity
  * and, in a diagnostic build (`./gradlew -Pdiag ...`) or after
  *   adb shell am broadcast -a app.orchard.tv.CONFIG -n app.orchard.tv/.guard.ConfigReceiver --ez diag true
- * also written to Android/data/app.orchard.tv/files/aerial-diag.log, which `adb pull` can fetch.
+ * also written privately; export with:
+ *   adb exec-out content read --uri content://app.orchard.tv.diagnostics/log/current
  */
 object DiagLog {
     private const val TAG = "AerialDiag"
     private const val KEEP = 600
     private const val FILE_LIMIT = 1 shl 20
+    private const val MAX_LINE_CHARS = 4096
+    private const val MAX_BUFFERED_CHARS = 128 * 1024
 
     private val lines = ArrayDeque<String>()
+    private var bufferedChars = 0
     // Made on the first line written to the file, so a release build without diag has no thread.
-    private val writer by lazy {
-        Executors.newSingleThreadExecutor { Thread(it, "AerialDiag").apply { isDaemon = true } }
-    }
+    private val writer by lazy { DiagnosticWriter() }
     private val stamp = SimpleDateFormat("MM-dd HH:mm:ss.SSS", Locale.US)
     @Volatile private var file: File? = null
 
@@ -61,28 +64,30 @@ object DiagLog {
 
     fun init(context: Context) {
         if (file != null || !enabled(context)) return
-        val dir = context.getExternalFilesDir(null) ?: context.filesDir
+        val dir = File(context.filesDir, "diagnostics").apply { mkdirs() }
         file = File(dir, "aerial-diag.log")
         i("log file ${file?.absolutePath}")
     }
 
     fun i(message: String) {
-        Log.i(TAG, message)
+        val bounded = message.take(MAX_LINE_CHARS)
+        Log.i(TAG, bounded)
         // SimpleDateFormat is not thread-safe; lines come from the main thread and the player's.
         val line = synchronized(lines) {
-            "${stamp.format(Date())} +${SystemClock.uptimeMillis()} $message".also {
+            "${stamp.format(Date())} +${SystemClock.uptimeMillis()} $bounded".also {
                 lines.addLast(it)
-                while (lines.size > KEEP) lines.removeFirst()
+                bufferedChars += it.length
+                while (lines.size > KEEP || bufferedChars > MAX_BUFFERED_CHARS) {
+                    bufferedChars -= lines.removeFirst().length
+                }
             }
         }
         val f = file ?: return
         writer.execute {
+            if (file != f) return@execute
             runCatching {
                 if (f.length() > FILE_LIMIT) f.renameTo(File(f.parentFile, "aerial-diag.old.log"))
-                val fresh = !f.exists()
                 f.appendText(line + "\n")
-                // Created 0600 on Xiaomi MiTV-MFTR0 (Android 14), which adb pull could not read.
-                if (fresh) f.setReadable(true, false)
             }
         }
     }

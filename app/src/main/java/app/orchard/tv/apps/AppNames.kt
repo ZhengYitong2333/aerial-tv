@@ -19,11 +19,11 @@ object AppNames {
     const val MAX_NAME = 24
 
     var all by mutableStateOf<Map<String, String>>(emptyMap()); private set
-    private lateinit var app: Context
+    private lateinit var app: android.app.Application
 
     fun init(context: Context) {
         if (::app.isInitialized) return
-        app = context.applicationContext
+        app = context.applicationContext as android.app.Application
         val json = runCatching { JSONObject(app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, null) ?: "{}") }
             .getOrDefault(JSONObject())
         all = json.keys().asSequence().associateWith { json.optString(it) }.filterValues { it.isNotBlank() }

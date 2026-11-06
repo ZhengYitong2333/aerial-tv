@@ -1,5 +1,7 @@
 package app.orchard.tv.ui.home
 
+import androidx.compose.runtime.mutableIntStateOf
+
 import android.content.Intent
 import android.content.res.Configuration
 import android.os.Build
@@ -306,9 +308,9 @@ fun HomeScreen(
     // Where focus goes when the overlay closes, when that is not the tile it was on. Kept apart
     // from focusedKey: a closing menu hands focus to whatever tile lies under it first.
     var focusAfterOverlay by remember { mutableStateOf<String?>(null) }
-    var indexAfterOverlay by remember { mutableStateOf(0) }
+    var indexAfterOverlay by remember { mutableIntStateOf(0) }
     var pillFocused by remember { mutableStateOf(false) }
-    var lastFocusedIndex by remember { mutableStateOf(0) }
+    var lastFocusedIndex by remember { mutableIntStateOf(0) }
     val focusedIndex = apps.indexOfFirst { it.key == focusedKey }
     val columns = AerialSettings.homeColumns
     val focusedRow = if (pillFocused || focusedIndex < 0) 0 else focusedIndex / columns

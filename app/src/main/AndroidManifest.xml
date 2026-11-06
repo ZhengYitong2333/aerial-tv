@@ -2,6 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- System sync/account managers and this app may bind; unrelated installed apps may not. -->
+    <permission android:name="app.orchard.tv.permission.BIND_REVIVAL"
+        android:protectionLevel="signature" />
+
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.software.live_tv" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
@@ -70,6 +74,8 @@
         </intent>
     </queries>
 
+    <!-- New platform attributes below are intentionally ignored on Android 5/6; the app has
+         explicit legacy paths. Landscape is intentional for the fixed TV canvas. -->
     <!-- largeHeap: up to Android 7 bitmaps live on the Java heap, and LeTV X3-55 Pro (Android 5.0.1)
          ran out of it drawing Home (issue #328). -->
     <application
@@ -78,10 +84,13 @@
         android:banner="@drawable/banner"
         android:theme="@style/Theme.Aerial"
         android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:supportsRtl="true"
         android:hardwareAccelerated="true"
         android:largeHeap="true"
-        android:networkSecurityConfig="@xml/network_security_config">
+        android:networkSecurityConfig="@xml/network_security_config"
+        tools:ignore="UnusedAttribute">
 
         <!-- TCL MT9655's picture interface (TvBacklightManager, see Brightness.kt TclPq); optional,
              so TVs without it install as before (#656). -->
@@ -91,9 +100,9 @@
              Not in recent apps: where the firmware keeps Home for itself, Aerial's task is a standard
              one and showed as a card first in the list that switched to nothing (MiTV-MFTR0, #324). -->
         <activity
-            android:name=".MainActivity"
+            android:name=".MainActivity" tools:ignore="DiscouragedApi"
             android:exported="true"
-            android:directBootAware="true"
+            android:directBootAware="true" tools:targetApi="n"
             android:launchMode="singleTask"
             android:stateNotNeeded="true"
             android:clearTaskOnLaunch="true"
@@ -116,6 +125,13 @@
         </activity>
 
         <provider
+            android:name=".system.DiagnosticExportProvider"
+            android:authorities="${applicationId}.diagnostics"
+            android:exported="true"
+            android:permission="android.permission.DUMP"
+            android:grantUriPermissions="false" />
+
+        <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.files"
             android:exported="false"
@@ -127,7 +143,7 @@
 
         <receiver
             android:name=".guard.BootReceiver"
-            android:directBootAware="true"
+            android:directBootAware="true" tools:targetApi="n"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
@@ -161,7 +177,7 @@
 
         <service
             android:name=".guard.RevivalListener"
-            android:directBootAware="true"
+            android:directBootAware="true" tools:targetApi="n"
             android:label="@string/guard_name"
             android:exported="true"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
@@ -172,6 +188,7 @@
 
         <service
             android:name=".guard.RevivalSyncService"
+            android:permission="app.orchard.tv.permission.BIND_REVIVAL"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.content.SyncAdapter" />
@@ -183,6 +200,7 @@
 
         <service
             android:name=".guard.RevivalAccountService"
+            android:permission="app.orchard.tv.permission.BIND_REVIVAL"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.accounts.AccountAuthenticator" />
@@ -194,7 +212,7 @@
 
         <service
             android:name=".guard.HomeGuardService"
-            android:directBootAware="true"
+            android:directBootAware="true" tools:targetApi="n"
             android:label="@string/guard_name"
             android:exported="true"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">

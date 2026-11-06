@@ -107,7 +107,7 @@ object AerialFormats {
             else runCatching { info.getCapabilitiesForType(mime) }.getOrNull()
         }
         val uhd = caps(MediaFormat.MIMETYPE_VIDEO_HEVC).any { c ->
-            runCatching { c.videoCapabilities.areSizeAndRateSupported(3840, 2160, 30.0) }.getOrDefault(false)
+            runCatching { c.videoCapabilities?.areSizeAndRateSupported(3840, 2160, 30.0) == true }.getOrDefault(false)
         }
         if (uhd) found += AerialQuality.Uhd
         val dvDecoder = caps(MediaFormat.MIMETYPE_VIDEO_DOLBY_VISION).any { c ->

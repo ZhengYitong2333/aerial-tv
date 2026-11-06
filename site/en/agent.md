@@ -93,6 +93,8 @@ Then do "Check".
 
 ### Windows: one command at a time
 
+For pre-install snapshots and verified restoration, prefer the matching shell scripts in Git Bash or WSL. The manual steps below do not create a snapshot: record the original HOME component, screensaver, app-op modes and location grant before installation, and retain those records for undo.
+
 Run these in PowerShell, with the adb from step 1. Everything inside `adb shell "..."` runs on the TV, so it's the same on every computer.
 
 1. Download the APK:
@@ -255,6 +257,8 @@ When everything is done, run `adb disconnect`: some TVs accept one device at a t
 
 ## Undo
 
+For automatic state capture and verification on Windows, use Git Bash or WSL with the matching `install.sh`, `restore.sh` and `restore-state.sh`. The manual PowerShell install does not create the new snapshot: record the original HOME component, screensaver_components, app-op modes and location permission before installing. Values read after installation are not a pre-install backup.
+
 macOS / Linux:
 
 ```bash
@@ -263,6 +267,8 @@ curl -fsSL https://aerial.qust.me/install.sh | TV=<IP> bash -s restore
 
 Add `--uninstall` (`bash -s restore --uninstall`) to remove Aerial as well.
 
+The scripts save the first pre-install state in the TV's `aerial_restore_v2_*` global keys, retain it across reinstalls, and clear it after a verified restore. Legacy installs without a snapshot need the verified original launcher; pass `RESTORE_HOME=<verified component> TV=<IP> tools/restore.sh` rather than guessing another model's launcher. WRITE_SECURE_SETTINGS and notification access remain revoked so Home Guard cannot take over again. Recorded app-ops, location permission and the screensaver are restored to their earlier values.
+
 Windows, one command at a time:
 
 ```
@@ -270,6 +276,9 @@ adb shell am broadcast -a app.orchard.tv.CONFIG -n app.orchard.tv/.guard.ConfigR
 adb shell cmd notification disallow_listener app.orchard.tv/app.orchard.tv.guard.RevivalListener
 adb shell pm revoke app.orchard.tv android.permission.WRITE_SECURE_SETTINGS
 adb shell appops set app.orchard.tv SYSTEM_ALERT_WINDOW default
+adb shell appops set app.orchard.tv WRITE_SETTINGS default
+adb shell appops set app.orchard.tv GET_USAGE_STATS default
+adb shell appops set app.orchard.tv android:get_usage_stats default
 adb shell appops set app.orchard.tv REQUEST_INSTALL_PACKAGES default
 adb shell appops set app.orchard.tv APP_AUTO_START default
 adb shell appops set app.orchard.tv APP_ASSOC_START default
@@ -290,7 +299,9 @@ Then:
 - Xiaomi (`adb shell pm path com.mitv.tvhome` prints a line): if the last line of `adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME -c android.intent.category.DEFAULT` is `app.orchard.tv/...`, run `adb shell cmd package set-home-activity --user 0 com.mitv.tvhome/.MainActivityUserMode` and restart the TV once (issue #848: with Aerial as the default Home the short press of the power key no longer sleeps the TV).
 - Hisense VIDAA: if `adb shell settings get global aerial_vt_home_pkg` prints a value (not `null`), run `adb shell setprop persist.vt.use_home_pkg <that value>` and `adb shell settings delete global aerial_vt_home_pkg`. If it prints nothing but `adb shell getprop persist.vt.use_home_pkg` is `app.orchard.tv` (set by hand on 1.15 and earlier) and `com.jamdeo.tv.vod` is installed, run `adb shell setprop persist.vt.use_home_pkg com.jamdeo.tv.vod`.
 - To uninstall: `adb uninstall app.orchard.tv`.
-- Finally `adb shell input keyevent KEYCODE_HOME`; the TV goes back to its own home screen.
+- In this legacy manual flow, `default` app-op modes and the firmware's default dream are fallbacks, not a record of the owner's original choices. Use the actual pre-install values when available.
+- Query `adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME`. If role commands are unavailable or it still resolves to Aerial or a hidden chooser, run `adb shell cmd package set-home-activity --user 0 <verified original component>`, or `adb shell pm set-home-activity <verified original component>` on older firmware, then query again. A command saying Success does not prove the firmware accepted it.
+- Only after HOME resolves to the verified launcher, rather than Aerial, FallbackHome or a hidden chooser, send `adb shell input keyevent KEYCODE_HOME` and check the screen. Keep restore records and report failure if verification fails.
 
 ## Common cases
 

@@ -1,5 +1,7 @@
 package app.orchard.tv.system
 
+import androidx.core.content.edit
+
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
@@ -89,6 +91,9 @@ object Brightness {
         // XGIMI: the real brightness is the DLP light-engine level; the system screen_brightness
         // setting does not follow it (issue #241).
         SystemProbe.xgimiBrightnessLevel()?.let { return it }
+        // XGIMI without that HAL: screen_brightness moves nothing, so Control Center opens XGIMI's
+        // own brightness page instead (openPictureSettings).
+        if (SystemProbe.hasXgimiSettings(context)) return null
         // ChangHong TVOS panel backlight (mt5520_ll, Android 5.1). Only a TV with the TVOS class
         // enters this block: there a refused write switches the slider off, and a level it cannot
         // read keeps the existing path below. Every other TV goes straight on as before.
@@ -170,7 +175,7 @@ object Brightness {
                 MitvPanel.setBacklight(context, from, next)
                 mitvLevel = next
                 context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                    .edit().putInt(KEY_MITV_LEVEL, next).apply()
+                    .edit { putInt(KEY_MITV_LEVEL, next) }
             }
             // Return what was asked for rather than reading it back: the MiTV middleware animates
             // the panel and its getter reports the transient level, which made the slider jump.

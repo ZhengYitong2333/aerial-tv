@@ -1,5 +1,7 @@
 package app.orchard.tv.settings
 
+import androidx.compose.runtime.mutableIntStateOf
+
 import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -60,7 +62,7 @@ enum class Effects(val key: String) {
 object AerialSettings {
     private const val PREFS = "settings"
     private var started = false
-    private lateinit var app: Context
+    private lateinit var app: android.app.Application
 
     private var chosenFocusStyle by mutableStateOf(FocusStyle.HighContrast)
 
@@ -166,7 +168,7 @@ object AerialSettings {
      * screensaver still caps it: Aerial starts just ahead of that one, see MainActivity.
      * [NEVER] starts none, and switches off the system's while that is Aerial's (issue #333).
      */
-    var screensaverMinutes by mutableStateOf(DEFAULT_SCREENSAVER_MINUTES); private set
+    var screensaverMinutes by mutableIntStateOf(DEFAULT_SCREENSAVER_MINUTES); private set
 
     const val NEVER = 0
 
@@ -190,7 +192,7 @@ object AerialSettings {
     fun init(context: Context) {
         if (started) return
         started = true
-        app = context.applicationContext
+        app = context.applicationContext as android.app.Application
         val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         chosenFocusStyle = FocusStyle.of(prefs.getString("focus_style", null))
         pinnedSources = prefs.getStringSet("pinned_sources", null)?.toSet() ?: emptySet()

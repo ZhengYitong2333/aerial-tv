@@ -1,5 +1,24 @@
 # 交接说明
 
+## 本地工作区补丁
+
+2026-11-06：本地补丁合并到上游 1.86，版本 `1.86-local.1`（versionCode 118，未推送或发布）。冲突取舍：上游重写过的部分（亮度、#44 HOME 选择框、手机页常驻监听、AerialStream 预取、安装脚本的 `grant`）用上游实现；本地的诊断私有导出、缩略图 LRU、照片解码限制、家长 PIN 覆盖设置 intent、恢复快照保留并接到上游代码上。快照的 app-op 增加 `AUTO_START`、`ASSOC_START`、`ACCESS_RESTRICTED_SETTINGS`，`resolve_home` 带上 `CATEGORY_DEFAULT`（#767）。297 项单测、40 项脚本测试通过，release 构建通过；lint 仍有上游 `VideoWallpaper.kt` 的 6 个 Media3 opt-in 错误。未在真机验证。
+
+第四轮补测：实际 PinPad + HomeViewModel 在测试 Activity 上验证返回、后台保留和配置重建（API23/28）；PhoneCard 在 native renderer 上按 1 倍/2 倍密度渲染并用普通 QR 检测解码（API28）。两个变体各 75 项通过，完整 lint 0 错误、2 既有升级提醒，release 重新归档。未测试完整 MainActivity 联网与主页生命周期。
+
+第四轮：Lifecycle 2.9.2 → 2.9.4、ZXing 3.5.3 → 3.5.4、Activity Compose 1.10.1 → 1.11.0；保留 minSdk21/targetSdk34。移除三条旧版本提醒豁免，后续较新 AndroidX 版本提醒保持可见。二维码新增 Android 6/9 模拟环境生成与解码回归（Robolectric 4.17 不支持 API21，未作 Android 5 运行验证），未连接真机。
+
+第三轮（历史记录）：缩略图缓存限制为 8 MiB，日志缓冲和写入队列有界，空闲线程退出；后台释放 SoundPool，手机壁纸页销毁时停止服务器。日志和磁贴导出转入私有目录，由需要 DUMP 权限的只读 Provider 导出；复活服务限制签名权限和绑定 action。各变体 68 项测试通过，lint 无报告项；依赖、构建工具和 target SDK 的 9 项升级提醒作为兼容性例外记录于 app/lint.xml，未升级依赖。待实机验证。
+
+2026-10-25：基于上游 `7b005c6` 的本地版本 `1.47-local.4`，versionCode 59，未推送或发布，尚未在真实电视验证。
+
+- 包含上一轮极米信号源、亮度和 HOME 解析兜底。
+- `tools/restore-state.sh` 与安装、恢复脚本配套：首次安装前保存设备自己的 `aerial_restore_v2_*` 状态；重复安装不覆盖；恢复核验 HOME，错误时保留记录并非零退出。支持旧版 HOME 命令、组件长短写法、用户后续新选择、卸载与无快照兜底。WRITE_SECURE_SETTINGS 和通知监听作为退出接管的一部分保持撤销，其他已记录 app-op、定位权限和屏保按原值还原。
+- `get.sh` 和站点打包清单已带上新 helper，双语 agent 指引同步说明原值与最终核验；未部署站点。
+- 设置服务分发和原生亮度页统一经过家长 PIN，输入源选择仍可用；照片解码同时限制两边至 2560 像素和总像素。
+- 完整 lint 的 Media3 opt-in、品牌名非翻译声明、flavor exported 已修正。公共 Activity 按键回调桥接及有意面向系统的 CLOSE_SYSTEM_DIALOGS 使用方法级抑制，注释说明用途，未全局关闭检查。
+- 新增照片、PIN 和脚本回归测试。脚本测试通过状态化假 ADB 执行真实安装/恢复脚本，不连接电视：`python3 -m unittest discover -s tools/tests -p 'test_restore.py' -v`。
+
 写给接手 Aerial 的人或 AI。先读这份，再读 [ARCHITECTURE.md](ARCHITECTURE.md) 和 [devices/](devices/)。
 
 ## 现状（2026-11-06）
@@ -407,7 +426,7 @@ adb -s $XIAOMI_TV:5555 shell "dumpsys package dexopt | grep -A2 'app.orchard.tv\
 - **帧率**：`adb shell dumpsys gfxinfo app.orchard.tv reset`，操作几下，再执行 `... framestats`，看 `SwapBuffers→GpuCompleted` 这一段的耗时。
 - **守护状态**：`dumpsys accessibility | grep -E "label=(Aerial|app.orchard.tv)"`（有输出就是已绑定；小米 ASTP0 上标签显示成类名）；日志 tag 是 `AerialGuard`。
 - **壁纸**：日志 tag 是 `AerialWallpaper`。
-- **logcat 看不到 App 日志的电视**（创维 7T631_T60）：`adb shell dumpsys activity app.orchard.tv/.MainActivity` 末尾打印 `DiagLog` 最近的记录（启动、显示模式、绘制、按键、焦点、屏保、加载耗时）；诊断版（`./gradlew -Pdiag ...`，版本名带 `-diag`）或 `ConfigReceiver --ez diag true` 之后还写进 `/sdcard/Android/data/app.orchard.tv/files/aerial-diag.log`，可以 `adb pull`。试验开关（下次启动生效）：`--ez mode_switch false` 不切刷新率（诊断版默认就不切），`--ez soft_layer true` 用软件绘制首页。
+- **logcat 看不到 App 日志的电视**（创维 7T631_T60）：`adb shell dumpsys activity app.orchard.tv/.MainActivity` 末尾打印 `DiagLog` 最近的记录（启动、显示模式、绘制、按键、焦点、屏保、加载耗时）；诊断版（`./gradlew -Pdiag ...`，版本名带 `-diag`）或 `ConfigReceiver --ez diag true` 之后还写进应用私有诊断目录，可以 `adb exec-out content read --uri content://app.orchard.tv.diagnostics/log/current > aerial-diag.log` 导出（需要 shell 的 DUMP 权限，上一份日志用 `/log/previous`）。试验开关（下次启动生效）：`--ez mode_switch false` 不切刷新率（诊断版默认就不切），`--ez soft_layer true` 用软件绘制首页。
 - **机型适配信息**：`TV=<ip> tools/report.sh`（只读）生成可以贴进 issue 的 `aerial-report-<机型>.md`，macOS 上顺便复制到剪贴板；用户也可以在手机页最下面「反馈问题」里复制。issue 表单是 `.github/ISSUE_TEMPLATE/device.yml`。内容和隐私边界见 ARCHITECTURE.md「诊断报告」。
 - **测应用内升级**：`ConfigReceiver --ez check_update true` 立刻检查；`--ez update_test true` 让「下载并安装」用推到 `Android/data/app.orchard.tv/files/update-test.apk` 的包（测完删掉这个文件）。见 ARCHITECTURE.md「升级」。
 - **手机配置页**：令牌不写日志，从电视截图里识别二维码即可：`swift tools/qr-from-screenshot.swift shot.png`。
@@ -418,7 +437,7 @@ adb -s $XIAOMI_TV:5555 shell "dumpsys package dexopt | grep -A2 'app.orchard.tv\
 - **立即预览屏保**：`adb shell am start -a app.orchard.tv.PREVIEW_SCREENSAVER -n app.orchard.tv/.MainActivity`；TCL 上测系统屏保：`am start -n com.android.systemui/.Somnambulator`。
 - **模拟小米的待机清理**：`adb shell am force-stop app.orchard.tv`，然后看日志里出现 `revived by the notification listener binding`。
 - **配置**：`adb shell am broadcast -a app.orchard.tv.CONFIG -n app.orchard.tv/.guard.ConfigReceiver --ez keep_adb true`。
-- **磁贴对比图**：`adb shell am broadcast -a app.orchard.tv.CONFIG -n app.orchard.tv/.guard.ConfigReceiver --es export_tiles before`，等日志 `AerialTiles` 出现 `Wrote`，再 `adb pull /sdcard/Android/data/app.orchard.tv/files/tiles/before.png`。改 `TileArt` 或 `TileRecipes` 前后各导一次。别的电视上的 App 不用装：把 APK 去掉 `lib/`、`assets/`、`*.dex` 之后推到 `files/tiles/apks/`，会按「装上了」的样子画在后面（名字后带「·」）。这个目录是自己建的，用完可以整个删掉。
+- **磁贴对比图**：`adb shell am broadcast -a app.orchard.tv.CONFIG -n app.orchard.tv/.guard.ConfigReceiver --es export_tiles before`，等日志 `AerialTiles` 出现 `Wrote`，再 `adb exec-out content read --uri content://app.orchard.tv.diagnostics/tiles/before > before.png`。改 `TileArt` 或 `TileRecipes` 前后各导一次。别的电视上的 App 不用装：把 APK 去掉 `lib/`、`assets/`、`*.dex` 之后推到 `files/tiles/apks/`，会按「装上了」的样子画在后面（名字后带「·」）。这个目录是自己建的，用完可以整个删掉。
 
 ## 必须遵守（踩过的坑）
 

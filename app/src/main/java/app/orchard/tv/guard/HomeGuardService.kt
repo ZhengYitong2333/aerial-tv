@@ -1464,6 +1464,7 @@ class HomeGuardService : AccessibilityService() {
         runCatching { packageManager.getPackageInfo("com.xiaomi.mitv.settings", 0) }.isSuccess
     }
 
+    @android.annotation.SuppressLint("UnsafeImplicitIntentLaunch")
     private fun closeSystemDialogs() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S || !closesXiaomiPanel) return
         @Suppress("DEPRECATION")

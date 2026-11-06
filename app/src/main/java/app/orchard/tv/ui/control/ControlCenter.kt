@@ -729,8 +729,10 @@ private fun BrightnessRow(vm: HomeViewModel) {
     val level = vm.brightness
     if (level == null) {
         MenuRow(Glyph.Sun, stringResource(R.string.cc_brightness), onClick = {
-            vm.overlay = Overlay.None
-            SystemProbe.openPictureSettings(context)
+            vm.whenUnlocked {
+                vm.overlay = Overlay.None
+                SystemProbe.openPictureSettings(context)
+            }
         }, trailing = stringResource(R.string.cc_brightness_in_settings) + " ›")
     } else {
         SliderRow(

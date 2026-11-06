@@ -100,7 +100,7 @@ object Wallpapers {
     /** The built-ins Personalize offers, one or two of each family; the rest stay for whoever chose them. */
     val FEATURED_BUILTINS = setOf("grad:hills_dawn", "grad:hills_night", "grad:dunes_gold", "grad:sea_sunset", "grad:waves_blue", "grad:aurora")
 
-    private lateinit var app: Context
+    private lateinit var app: android.app.Application
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val io = Mutex()
     private val prefs by lazy { app.getSharedPreferences("wallpaper", Context.MODE_PRIVATE) }
@@ -112,7 +112,7 @@ object Wallpapers {
     /** TV inputs that can play behind Home, by TvInputInfo id and name; set as Home lists inputs. */
     private var sources: List<Pair<String, String>> = emptyList()
     private val bakedDir by lazy { File(app.filesDir, "backdrop").apply { mkdirs() } }
-    private val thumbs = HashMap<String, Bitmap>()
+    private val thumbs = ThumbnailCache()
 
     var items by mutableStateOf<List<Wallpaper>>(emptyList()); private set
     var selectedId by mutableStateOf(LATEST_DAILY); private set
@@ -195,7 +195,7 @@ object Wallpapers {
     fun init(context: Context) {
         if (started) return
         started = true
-        app = context.applicationContext
+        app = context.applicationContext as android.app.Application
         // Home drawn at the panel's size (UhdCanvas) gets pictures of that size.
         val scale = UhdCanvas.scale(context)
         context.resources.displayMetrics.let {
@@ -618,7 +618,7 @@ object Wallpapers {
 
     /** The owner's videos changed (sent or deleted from the phone): their cards come or go. */
     fun videosChanged() {
-        synchronized(thumbs) { thumbs.keys.removeAll { isVideo(it) } }
+        synchronized(thumbs) { thumbs.removeIf { isVideo(it) } }
         rebuildList()
         // The film the frame was taken from gone: so is the frame.
         val spot = prefs.getString("video_film", null)
@@ -849,25 +849,25 @@ object Wallpapers {
 
     // ---- uploads ----
 
-    /** Stores an uploaded picture, downscaled to at most 2560 px wide, and returns its id. */
+    /** Stores an uploaded picture, bounded to 2560 px on either side, and returns its id. */
     suspend fun addPhoto(input: InputStream): String? = io.withLock {
         val id = withContext(Dispatchers.IO) {
             val tmp = File.createTempFile("upload", ".bin", app.cacheDir)
             try {
                 tmp.outputStream().use { input.copyTo(it) }
-                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                BitmapFactory.decodeFile(tmp.path, bounds)
-                if (bounds.outWidth <= 0) return@withContext null
                 // Stored upright: the JPEG written below keeps no EXIF, so the turn is applied now.
                 val orientation = Images.exifOrientation(tmp)
-                val wide = if (Images.quarterTurn(orientation)) bounds.outHeight else bounds.outWidth
-                var sample = 1
-                while (wide / (sample * 2) >= 2560) sample *= 2
-                val decoded = BitmapFactory.decodeFile(tmp.path, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return@withContext null
-                val bmp = Images.upright(decoded, orientation)
+                val bmp = PhotoImport.decode(tmp)?.let { Images.upright(it, orientation) } ?: return@withContext null
                 val name = System.currentTimeMillis().toString(36)
-                File(photoDir, "$name.jpg").outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 90, it) }
-                bmp.recycle()
+                val target = File(photoDir, "$name.jpg")
+                try {
+                    if (!target.outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 90, it) }) {
+                        target.delete()
+                        return@withContext null
+                    }
+                } finally {
+                    bmp.recycle()
+                }
                 "photo:$name"
             } finally {
                 tmp.delete()

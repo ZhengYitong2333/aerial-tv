@@ -1,5 +1,9 @@
 package app.orchard.tv
 
+import androidx.core.graphics.drawable.toDrawable
+
+import androidx.core.content.edit
+
 import android.app.ActivityOptions
 import android.content.BroadcastReceiver
 import android.content.ComponentName
@@ -155,8 +159,10 @@ class MainActivity : ComponentActivity() {
         DiagLog.i("onCreate before the user is unlocked; showing the kept backdrop")
         val picture = Wallpapers.lockedBootBackdrop(this)?.takeIf { it.exists() }
             ?.let { runCatching { BitmapFactory.decodeFile(it.path) }.getOrNull() }
-        window.setBackgroundDrawable(picture?.let { BitmapDrawable(resources, it) } ?: ColorDrawable(Color.BLACK))
-        ContextCompat.registerReceiver(this, unlocked, IntentFilter(Intent.ACTION_USER_UNLOCKED), ContextCompat.RECEIVER_EXPORTED)
+        window.setBackgroundDrawable(picture?.let { it.toDrawable(resources) } ?: Color.BLACK.toDrawable())
+        if (Build.VERSION.SDK_INT >= 24) {
+            ContextCompat.registerReceiver(this, unlocked, IntentFilter(Intent.ACTION_USER_UNLOCKED), ContextCompat.RECEIVER_EXPORTED)
+        }
         // Unlocked between the check and the registration.
         if (GuardSetup.isUserUnlocked(this)) startReal(null)
     }
@@ -280,7 +286,7 @@ class MainActivity : ComponentActivity() {
         // baked at the last start, so the window never shows black while Compose sets up. Without
         // one, keep what the window already shows (the kept backdrop of a locked start).
         val baked = Wallpapers.backdrop
-        if (baked != null) window.setBackgroundDrawable(BitmapDrawable(resources, baked.asAndroidBitmap()))
+        if (baked != null) window.setBackgroundDrawable(baked.asAndroidBitmap().toDrawable(resources))
         // Clear whatever the window showed until the first frame (the baked backdrop, or the kept
         // one of a locked start): from then on Home paints every pixel itself.
         window.decorView.viewTreeObserver.addOnDrawListener(object : ViewTreeObserver.OnDrawListener {
@@ -415,7 +421,7 @@ class MainActivity : ComponentActivity() {
         val boot = Settings.Global.getInt(contentResolver, Settings.Global.BOOT_COUNT, -1)
         val prefs = getSharedPreferences("system", MODE_PRIVATE)
         if (boot < 0 || prefs.getInt("boot_source_boot", -2) == boot) return false
-        prefs.edit().putInt("boot_source_boot", boot).apply()
+        prefs.edit { putInt("boot_source_boot", boot) }
         return true
     }
 
@@ -603,9 +609,7 @@ class MainActivity : ComponentActivity() {
     private fun display(): android.view.Display? =
         if (Build.VERSION.SDK_INT >= 30) display else @Suppress("DEPRECATION") windowManager.defaultDisplay
 
-    private fun systemProperty(key: String): String? = runCatching {
-        Class.forName("android.os.SystemProperties").getMethod("get", String::class.java).invoke(null, key) as String
-    }.getOrNull()
+    private fun systemProperty(key: String): String? = app.orchard.tv.system.VendorAccess.property(key)
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
@@ -806,6 +810,8 @@ class MainActivity : ComponentActivity() {
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
+    // Override the public Activity callback; AndroidX's internal bridge carries a library restriction.
+    @android.annotation.SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (locked) return super.dispatchKeyEvent(event)
         if (event.keyCode == dreamWokeKey) {
@@ -960,6 +966,7 @@ class MainActivity : ComponentActivity() {
         KidsWatch.homeInFront = true
         idleHandler.removeCallbacks(endHomeBounce)
         vm.homeBounce = false
+        Sounds.prepare()
         DiagLog.i("onResume; screensaver after ${idleBeforeScreensaver() / 1000} s")
         if (SystemClock.uptimeMillis() - dreamAskedAt < 1_000) {
             dreamChecking = true
@@ -1028,6 +1035,7 @@ class MainActivity : ComponentActivity() {
         vm.homeBounce = false
         // An app, the screensaver or standby in front: the PIN is asked again, as in Lite (#718).
         AerialSettings.relock()
+        Sounds.release()
         unregisterReceiver(packageReceiver)
         unregisterReceiver(volumeReceiver)
         unregisterReceiver(dayReceiver)
@@ -1072,7 +1080,8 @@ class MainActivity : ComponentActivity() {
         // Older Konka: an input tile switches like Control Center's list, the input first and then
         // its page; started directly it showed the input last used (Konka 828, Android 5.0.1, 1.83:
         // the list switched, the tiles did not; issue #710, the reporter's local build).
-        if (app.source != null && KonkaSources.needsSwitch(app.launchIntent())) {
+        // XGIMI: a pinned input carries its settings service's source page, which only starts as a service.
+        if (app.source != null && (KonkaSources.needsSwitch(app.launchIntent()) || SystemProbe.isXgimiSettingsIntent(app.launchIntent()))) {
             open(app.launchIntent())
             return
         }
@@ -1146,6 +1155,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun open(intent: Intent) {
+        if (AerialSettings.locked && SystemProbe.isSettingsIntent(this, intent)) {
+            vm.whenUnlocked { open(intent) }
+            return
+        }
         FilmAfterInput.noteOpened(this, intent)
         // Older Konka: the input first, then its page, which only shows what is on (issue #710).
         if (KonkaSources.needsSwitch(intent)) {

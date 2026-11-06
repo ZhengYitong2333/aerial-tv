@@ -1,5 +1,7 @@
 package app.orchard.tv.wallpaper
 
+import androidx.core.graphics.set
+
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -54,7 +56,7 @@ import java.security.SecureRandom
  * random token shown only on the TV (the QR code and the address under it), so another device on
  * the network cannot use it by guessing. The token stays the same from one start to the next.
  */
-class PhoneServer private constructor(private val context: Context, private val token: String) : NanoHTTPD(PORT) {
+class PhoneServer private constructor(private val context: android.app.Application, private val token: String) : NanoHTTPD(PORT) {
 
     override fun serve(session: IHTTPSession): Response {
         val prefix = "/$token"
@@ -545,7 +547,7 @@ class PhoneServer private constructor(private val context: Context, private val 
         fun listen(context: Context): PhoneServer? {
             running?.let { if (it.isAlive) return it }
             return runCatching {
-                PhoneServer(context.applicationContext, token(context)).also {
+                PhoneServer(context.applicationContext as android.app.Application, token(context)).also {
                     it.start(SOCKET_READ_TIMEOUT, true)
                     running = it
                 }
@@ -608,8 +610,8 @@ class PhoneServer private constructor(private val context: Context, private val 
             val n = matrix.width
             val bmp = createBitmap(n * scale, n * scale)
             for (y in 0 until n) for (x in 0 until n) {
-                if (matrix[x, y]) for (dy in 0 until scale) for (dx in 0 until scale) bmp.setPixel(x * scale + dx, y * scale + dy, Color.BLACK)
-                else for (dy in 0 until scale) for (dx in 0 until scale) bmp.setPixel(x * scale + dx, y * scale + dy, Color.WHITE)
+                if (matrix[x, y]) for (dy in 0 until scale) for (dx in 0 until scale) bmp[x * scale + dx, y * scale + dy] = Color.BLACK
+                else for (dy in 0 until scale) for (dx in 0 until scale) bmp[x * scale + dx, y * scale + dy] = Color.WHITE
             }
             return bmp
         }

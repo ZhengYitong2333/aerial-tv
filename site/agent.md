@@ -95,6 +95,8 @@ curl -fsSL https://aerial.qust.me/install.sh | KEEP_ADB=1 TV=<IP> bash
 
 在 PowerShell 里运行（`adb` 是第 1 步准备好的）。下面的 `adb shell "..."` 在电视上执行，Windows 和 macOS 写法一样。
 
+需要自动保存和核验恢复原值时，优先在 Git Bash 或 WSL 中运行上面的同版本安装脚本；`install.sh`、`restore.sh` 和 `restore-state.sh` 必须配套。下方逐条安装方式不自动生成新版快照，安装前须单独保存 HOME 完整组件、`screensaver_components`、相关 app-op 和定位权限原值，不能用安装后的值冒充安装前记录。
+
 1. 下载 APK：
    ```powershell
    curl.exe -fL -o aerial-standard.apk https://aerial.qust.me/download/aerial-standard.apk
@@ -263,6 +265,8 @@ curl -fsSL https://aerial.qust.me/install.sh | TV=<IP> bash -s restore
 
 最后加 `--uninstall`（`bash -s restore --uninstall`）会顺便卸载 Aerial。
 
+新版脚本在设备的 `aerial_restore_v2_*` 全局键中保存首次安装前状态，重复安装不会覆盖；恢复成功后清理记录。旧安装没有记录时只能按原值手动恢复；HOME 无法还原时脚本返回失败，可通过 `RESTORE_HOME=<已核实原桌面组件> TV=<IP> tools/restore.sh` 指定目标。不要猜其他型号的桌面。WRITE_SECURE_SETTINGS 和通知监听始终撤销，以阻止守护再次接管；其他记录过的 app-op、定位权限和屏保按原值恢复。
+
 Windows 逐条运行：
 
 ```
@@ -270,6 +274,9 @@ adb shell am broadcast -a app.orchard.tv.CONFIG -n app.orchard.tv/.guard.ConfigR
 adb shell cmd notification disallow_listener app.orchard.tv/app.orchard.tv.guard.RevivalListener
 adb shell pm revoke app.orchard.tv android.permission.WRITE_SECURE_SETTINGS
 adb shell appops set app.orchard.tv SYSTEM_ALERT_WINDOW default
+adb shell appops set app.orchard.tv WRITE_SETTINGS default
+adb shell appops set app.orchard.tv GET_USAGE_STATS default
+adb shell appops set app.orchard.tv android:get_usage_stats default
 adb shell appops set app.orchard.tv REQUEST_INSTALL_PACKAGES default
 adb shell appops set app.orchard.tv APP_AUTO_START default
 adb shell appops set app.orchard.tv APP_ASSOC_START default
@@ -290,7 +297,9 @@ Android 6、7 没有 `cmd` 时，`disallow_listener` 那条改为：`settings ge
 - 小米（`adb shell pm path com.mitv.tvhome` 有输出）：`adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME -c android.intent.category.DEFAULT` 的最后一行是 `app.orchard.tv/...` 时，运行 `adb shell cmd package set-home-activity --user 0 com.mitv.tvhome/.MainActivityUserMode`，再重启电视一次（#848：默认桌面改成 Aerial 后短按电源键不息屏）。
 - 海信 VIDAA：`adb shell settings get global aerial_vt_home_pkg` 有值（不是 `null`）时，运行 `adb shell setprop persist.vt.use_home_pkg <这个值>` 和 `adb shell settings delete global aerial_vt_home_pkg`。没有值、但 `adb shell getprop persist.vt.use_home_pkg` 是 `app.orchard.tv`（1.15 及以前手动改过）并且装有 `com.jamdeo.tv.vod` 时，运行 `adb shell setprop persist.vt.use_home_pkg com.jamdeo.tv.vod`。
 - 要卸载时 `adb uninstall app.orchard.tv`。
-- 最后 `adb shell input keyevent KEYCODE_HOME`，电视回到原来的桌面。
+- 无快照的逐条恢复中，上面的 `default` 只是兜底；有安装前记录则使用原 app-op 和屏保值。不要把固件默认屏保当作用户原来选择的屏保。
+- 运行 `adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME` 核对实际 HOME。`cmd role` 不可用、仍指向 Aerial 或隐藏选择框时，用 `adb shell cmd package set-home-activity --user 0 <已核实原桌面组件>`，不支持时尝试 `adb shell pm set-home-activity <已核实原桌面组件>`，然后重新查询。命令返回 Success 不代表固件已采纳。
+- 只有实际 HOME 已核对、且不再指向 Aerial、FallbackHome 或隐藏选择框时，才执行 `adb shell input keyevent KEYCODE_HOME` 并确认电视画面。未成功则保留恢复记录，不能宣布恢复完成。
 
 ## 常见情况
 

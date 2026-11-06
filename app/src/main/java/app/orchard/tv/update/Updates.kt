@@ -1,6 +1,8 @@
 package app.orchard.tv.update
 
 import android.app.PendingIntent
+import androidx.core.net.toUri
+
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -232,7 +234,7 @@ object Updates {
         }
         if (Build.VERSION.SDK_INT >= 26 && !app.packageManager.canRequestPackageInstalls()) {
             // Xiaomi MiTV-MFTR0 has this page; TCL MT5879 does not (tools/install.sh grants it there).
-            val settings = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${app.packageName}"))
+            val settings = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, "package:${app.packageName}".toUri())
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             if (runCatching { context.startActivity(settings) }.isSuccess) {
                 install = Install.NeedsPermission
@@ -567,7 +569,7 @@ object Updates {
         testApk?.takeIf { it.isFile }?.let { test ->
             file.parentFile?.mkdirs()
             test.copyTo(file, overwrite = true)
-            if (Build.VERSION.SDK_INT < 24) file.setReadable(true, false)
+            LegacyInstaller.makeApkReadable(file)
             return verify(context, file)
         }
         val name = "aerial-${BuildConfig.FLAVOR}.apk"
@@ -629,7 +631,7 @@ object Updates {
             if (total > 0 && done != total) error("got $done of $total bytes")
             if (!part.renameTo(file)) error("could not keep the download")
             // The installer on Android 5 and 6 opens the file itself.
-            if (Build.VERSION.SDK_INT < 24) file.setReadable(true, false)
+            LegacyInstaller.makeApkReadable(file)
         } finally {
             c.disconnect()
             part.delete()

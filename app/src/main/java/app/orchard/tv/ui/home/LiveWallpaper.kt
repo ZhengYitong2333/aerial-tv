@@ -1,4 +1,10 @@
+@file:androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+
 package app.orchard.tv.ui.home
+
+import androidx.core.graphics.get
+
+import androidx.core.graphics.scale
 
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
@@ -1037,7 +1043,7 @@ private class FrameReader(private val context: android.content.Context) {
         }
         if (!quiet || frame == null) DiagLog.i("wallpaper ${if (exact) "frame" else if (nearest) "key frame" else "glass frame"} decoded: ${frame != null} in ${android.os.SystemClock.elapsedRealtime() - started} ms")
         val sized = frame?.let {
-            val sized = if (it.width == w && it.height == h) it else Bitmap.createScaledBitmap(it, w, h, true)
+            val sized = if (it.width == w && it.height == h) it else it.scale(w, h, true)
             if (sized.isMutable && sized.config == Bitmap.Config.ARGB_8888) sized else sized.copy(Bitmap.Config.ARGB_8888, true)
         }
         // The decoder can lose the colour too: on Xiaomi MiTV-MFTP0 (Android 9) the wallpaper and
@@ -1386,7 +1392,7 @@ internal fun unreadable(b: Bitmap): String? {
     var lo = 255
     var hi = 0
     for (y in 1..8) for (x in 1..8) {
-        val c = b.getPixel(b.width * x / 9, b.height * y / 9)
+        val c = b[b.width * x / 9, b.height * y / 9]
         val r = c shr 16 and 0xFF
         val g = c shr 8 and 0xFF
         val bl = c and 0xFF

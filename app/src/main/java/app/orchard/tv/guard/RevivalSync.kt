@@ -57,7 +57,8 @@ object RevivalSync {
 class RevivalSyncService : Service() {
     private val adapter by lazy { Adapter(applicationContext) }
 
-    override fun onBind(intent: Intent): IBinder = adapter.syncAdapterBinder
+    override fun onBind(intent: Intent): IBinder? =
+        if (intent.action == "android.content.SyncAdapter") adapter.syncAdapterBinder else null
 
     private class Adapter(context: Context) : AbstractThreadedSyncAdapter(context, false) {
         override fun onPerformSync(account: Account, extras: Bundle, authority: String, provider: ContentProviderClient, result: SyncResult) {
@@ -77,9 +78,10 @@ class RevivalSyncService : Service() {
 
 /** The account type RevivalSync's account needs. It cannot sign in to anything. */
 class RevivalAccountService : Service() {
-    private val authenticator by lazy { Authenticator(this) }
+    private val authenticator by lazy { Authenticator(applicationContext) }
 
-    override fun onBind(intent: Intent): IBinder = authenticator.iBinder
+    override fun onBind(intent: Intent): IBinder? =
+        if (intent.action == "android.accounts.AccountAuthenticator") authenticator.iBinder else null
 
     private class Authenticator(context: Context) : AbstractAccountAuthenticator(context) {
         override fun editProperties(response: AccountAuthenticatorResponse, accountType: String) = null

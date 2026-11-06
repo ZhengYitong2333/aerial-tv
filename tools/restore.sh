@@ -5,12 +5,34 @@
 #   TV=<tv-ip> tools/restore.sh --uninstall  # and remove Aerial (and Aerial Lite)
 # If you disabled the stock launcher by hand, also: adb shell pm enable <its package>
 set -euo pipefail
+cd "$(dirname "$0")/.."
 : "${TV:?set TV to the TV IP address}"
 PKG=app.orchard.tv
 GUARD="$PKG/$PKG.guard.HomeGuardService"
+case "${1:-}" in ""|--uninstall) ;; *) echo "Usage: TV=<ip> tools/restore.sh [--uninstall]" >&2; exit 1 ;; esac
 case "$TV" in *:*) SERIAL="$TV" ;; *) SERIAL="$TV:5555" ;; esac
 export ANDROID_SERIAL="$SERIAL"
 adb connect "$SERIAL" >/dev/null
+if [ "$(adb get-state 2>/dev/null)" != device ]; then
+  echo "ADB is not connected and authorized; nothing was restored." >&2
+  exit 1
+fi
+source tools/restore-state.sh
+if [ -n "${RESTORE_HOME:-}" ] && ! valid_component "$RESTORE_HOME"; then
+  echo "RESTORE_HOME must be a verified package/activity component." >&2
+  exit 1
+fi
+AERIAL_INSTALLED=0
+if adb shell pm path "$PKG" 2>/dev/null | grep -q '^package:'; then AERIAL_INSTALLED=1; fi
+HAS_STATE=$(state_get complete)
+RESTORE_ERRORS=0
+HOME_BEFORE=$(resolve_home) || HOME_BEFORE=
+SAVED_HOME=${RESTORE_HOME:-}
+EXPECTED_HOME=
+if [ -z "$SAVED_HOME" ] && [ "$HAS_STATE" = 1 ]; then SAVED_HOME=$(state_get home); fi
+if [ "$HAS_STATE" != 1 ]; then
+  echo "No pre-install snapshot: permissions use legacy defaults; the original custom screensaver is unknown." >&2
+fi
 
 # First take away what lets Aerial switch the guard back on, or it would simply do so.
 adb shell am broadcast -a "$PKG.CONFIG" -n "$PKG/.guard.ConfigReceiver" --ez keep_adb false --ez own_screensaver false >/dev/null 2>&1 || true
@@ -24,22 +46,33 @@ case "$LISTENERS" in
     else adb shell settings delete secure enabled_notification_listeners >/dev/null 2>&1 || true; fi ;;
 esac
 adb shell pm revoke "$PKG" android.permission.WRITE_SECURE_SETTINGS >/dev/null 2>&1 || true
-adb shell appops set "$PKG" SYSTEM_ALERT_WINDOW default >/dev/null 2>&1 || true
-adb shell appops set "$PKG" REQUEST_INSTALL_PACKAGES default >/dev/null 2>&1 || true
-adb shell appops set "$PKG" GET_USAGE_STATS default >/dev/null 2>&1 || true
-adb shell appops set "$PKG" android:get_usage_stats default >/dev/null 2>&1 || true
-adb shell appops set "$PKG" APP_AUTO_START default >/dev/null 2>&1 || true   # TCL only
-adb shell appops set "$PKG" APP_ASSOC_START default >/dev/null 2>&1 || true
-adb shell appops set "$PKG" AUTO_START default >/dev/null 2>&1 || true   # FFALCON T966D5's names
-adb shell appops set "$PKG" ASSOC_START default >/dev/null 2>&1 || true
-adb shell appops set "$PKG" ACCESS_RESTRICTED_SETTINGS default >/dev/null 2>&1 || true   # Android 13+
+if [ "$AERIAL_INSTALLED" = 1 ] && adb shell dumpsys package "$PKG" | grep -q 'android.permission.WRITE_SECURE_SETTINGS: granted=true'; then
+  echo "Could not revoke Home Guard's settings permission." >&2
+  RESTORE_ERRORS=1
+fi
+restore_appops
 adb shell am force-stop "$PKG"
 case "$(adb shell settings get secure screensaver_components | tr -d '\r')" in
-  "$PKG"/*) adb shell settings put secure screensaver_components "$(adb shell settings get secure screensaver_default_component | tr -d '\r')" ;;
+  "$PKG"/*)
+    if [ "$HAS_STATE" = 1 ]; then
+      DREAM=$(state_get screensaver)
+      if [ "$DREAM" = @unknown ]; then
+        echo "The previous install already used Aerial's screensaver; restoring the firmware default, not a known owner preference." >&2
+        DREAM=$(adb shell settings get secure screensaver_default_component | tr -d '\r')
+      fi
+    else
+      DREAM=$(adb shell settings get secure screensaver_default_component | tr -d '\r')
+    fi
+    case "$DREAM" in
+      null) adb shell settings delete secure screensaver_components >/dev/null ;;
+      "$PKG"/*) echo "No non-Aerial screensaver fallback is known; snapshot retained." >&2; RESTORE_ERRORS=1 ;;
+      *"'"*|*$'\n'*) echo "Invalid saved screensaver." >&2; RESTORE_ERRORS=1 ;;
+      *) adb shell settings put secure screensaver_components "'$DREAM'" >/dev/null ;;
+    esac ;;
 esac
 
 CURRENT=$(adb shell settings get secure enabled_accessibility_services | tr -d '\r')
-REST=$(printf '%s' "$CURRENT" | tr ':' '\n' | grep -v -x "$GUARD" | grep -v -x "$PKG/.guard.HomeGuardService" | paste -sd: - || true)
+REST=$(printf '%s' "$CURRENT" | tr ':' '\n' | grep -F -v -x "$GUARD" | grep -F -v -x "$PKG/.guard.HomeGuardService" | paste -sd: - || true)
 if [ -z "$REST" ] || [ "$REST" = null ]; then
   adb shell settings delete secure enabled_accessibility_services >/dev/null
 else
@@ -83,11 +116,41 @@ fi
 # Aerial Lite (Android 4.x) takes over only as the home app the owner chose; nothing else to undo.
 LITE=app.orchard.tv.lite
 LITE_HERE=$(adb shell pm path "$LITE" 2>/dev/null | grep -c package: || true)
+# Do not replace a different launcher the owner selected after installing Aerial.
+case "$HOME_BEFORE" in
+  "$PKG"/*|""|*ResolverActivity|*FallbackHome)
+    if valid_component "$SAVED_HOME" && [[ "$SAVED_HOME" != "$PKG/"* ]]; then
+      EXPECTED_HOME=$SAVED_HOME
+      adb shell cmd role add-role-holder --user 0 android.app.role.HOME "${SAVED_HOME%%/*}" >/dev/null 2>&1 || true
+      if ! same_component "$(resolve_home || true)" "$SAVED_HOME"; then
+        adb shell cmd package set-home-activity --user 0 "$SAVED_HOME" >/dev/null 2>&1 \
+          || adb shell pm set-home-activity "$SAVED_HOME" >/dev/null 2>&1 || true
+      fi
+    fi ;;
+esac
+restore_grants
+
 if [ "${1:-}" = --uninstall ]; then
   adb shell pm path "$PKG" 2>/dev/null | grep -q package: && adb uninstall "$PKG"
   [ "$LITE_HERE" = 0 ] || adb uninstall "$LITE"
 elif [ "$LITE_HERE" != 0 ]; then
   echo "Aerial Lite stays the home screen while it is installed and chosen. Run with --uninstall, or on the TV: Settings > Apps > Aerial Lite > Clear defaults, then press Home and pick the TV's launcher."
 fi
+HOME_NOW=$(resolve_home) || HOME_NOW=
+if [ -n "$EXPECTED_HOME" ] && ! same_component "$HOME_NOW" "$EXPECTED_HOME"; then
+  echo "Restore incomplete: expected $EXPECTED_HOME, but Home resolves to ${HOME_NOW:-an unknown component}. Snapshot retained." >&2
+  exit 1
+fi
+case "$HOME_NOW" in
+  "$PKG"/*|""|*FallbackHome|*ResolverActivity)
+    echo "Restore incomplete: Home still resolves to ${HOME_NOW:-an unknown component}." >&2
+    echo "Snapshot retained. For legacy installs, set RESTORE_HOME to the verified original launcher component." >&2
+    exit 1 ;;
+esac
+if [ "$RESTORE_ERRORS" != 0 ]; then
+  echo "Home now: $HOME_NOW; some permissions could not be restored. Snapshot retained." >&2
+  exit 1
+fi
 adb shell input keyevent KEYCODE_HOME
-echo "Home now: $(adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME -c android.intent.category.DEFAULT | tail -n 1 | tr -d '\r')"
+if [ "$HAS_STATE" = 1 ]; then clear_restore_state; fi
+echo "Home now: $HOME_NOW"

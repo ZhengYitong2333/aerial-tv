@@ -1,5 +1,7 @@
 package app.orchard.tv.guard
 
+import androidx.core.content.edit
+
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -48,7 +50,7 @@ class ConfigReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         // ... --es export_tiles <name>   (every tile on one picture; see TileSheet)
         // Runs on past the broadcast's time limit; Home keeps the process alive. Look for the file.
-        intent.getStringExtra("export_tiles")?.takeIf { Regex("^[A-Za-z0-9_-]+$").matches(it) }?.let { name ->
+        intent.getStringExtra("export_tiles")?.takeIf { Regex("^[A-Za-z0-9_-]{1,40}$").matches(it) }?.let { name ->
             val app = context.applicationContext
             @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
             kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.Default) {
@@ -200,9 +202,10 @@ class ConfigReceiver : BroadcastReceiver() {
         // Optional player and current-input setting key allow testing other firmware routes.
         val cecKeys = listOf("cec_home_input", "cec_home_player", "cec_home_input_setting").filter { intent.hasExtra(it) }
         if (cecKeys.isNotEmpty()) {
-            val edit = context.getSharedPreferences("system", Context.MODE_PRIVATE).edit()
-            for (key in cecKeys) edit.putString(key, intent.getStringExtra(key)?.takeIf { it.isNotBlank() })
-            edit.commit()
+            // The service reads these together immediately; persist the whole configuration first.
+            context.getSharedPreferences("system", Context.MODE_PRIVATE).edit(commit = true) {
+                for (key in cecKeys) putString(key, intent.getStringExtra(key)?.takeIf { it.isNotBlank() })
+            }
             HomeGuardService.refreshCecHome()
         }
         GuardSetup.ensureEnabled(context)

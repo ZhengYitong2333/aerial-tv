@@ -75,6 +75,8 @@ object ScreensaverVideos {
     }
 
     /** The upload is already on disk and is taken over. Validate it first, and publish a complete directory. */
+    // Only count free space already available; do not evict the owner's caches to accept a video.
+    @android.annotation.SuppressLint("UsableSpace")
     @Synchronized
     fun add(context: Context, upload: File, name: String): ScreensaverVideo? {
         val root = directory(context)

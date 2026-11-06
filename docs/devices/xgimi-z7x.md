@@ -1,5 +1,14 @@
 # 极米 Z7X（国行，GMUI）
 
+## 本地版本 1.86-local.1
+
+2026-11-06 把 `1.47-local.4` 的本地补丁合并到上游 1.86（versionCode 118）。合并后在 Z7X 上的行为如下，仍未在本机 Z7X 真机验证。
+
+- 信号源：Control Center 的「信号源」按钮、列出的 HDMI 行和首页固定的输入源磁贴都通过 `SettingService` 打开极米原生信号源页（issue #241）。该服务只验证过能打开面板，不保证直接切到某个 HDMI 口。信号源页不算设置，家长 PIN 不拦它。
+- 亮度：有 DLP 光机 HAL 时用上游的 `getDlpLumensLevel` / `setDlpLumensLevel`；没有 HAL 但有设置服务时不显示亮度条，改为打开极米亮度页，不写 `SCREEN_BRIGHTNESS`。
+- 服务检测会检查导出、启用和调用权限。
+- HOME 选择框：用上游的做法，只在按 Home 后、开机和唤醒时把 `xgimiframeworkui/.resolver.ResolverActivity` 当原桌面接管（issue #44）。本地 1.47 版本「任何时候前台是解析出的 HOME 就接管」的兜底已去掉，因为同一个选择框也用于「打开方式」。
+
 - 设备型号 `Z7X`，`ro.product.model` = `XGIMI TV`。
 - GMUI 6.11.101.01_499（PG0017V6.12.68），Android 9（SDK 28），2 GB 内存 / 16 GB 存储。
 - 测试日期 2026-10-21，系统为出厂状态，未 root、未刷机。

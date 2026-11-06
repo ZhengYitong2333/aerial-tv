@@ -40,7 +40,7 @@ fi
 dir=$(mktemp -d)
 trap 'rm -rf "$dir"' EXIT
 mkdir -p "$dir/tools"
-for f in install.sh restore.sh tcast-push.py; do
+for f in install.sh restore.sh restore-state.sh tcast-push.py; do
   # The site has main's scripts as of the last release; another ref comes from GitHub only.
   { [ -z "${AERIAL_REF:-}" ] && curl -fsSL --connect-timeout 10 "$SITE/tools/$f" -o "$dir/tools/$f"; } \
     || curl -fsSL --connect-timeout 10 "$RAW/tools/$f" -o "$dir/tools/$f"

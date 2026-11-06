@@ -725,7 +725,7 @@ private fun ScreensaverChoice(onStart: () -> Unit) {
 }
 
 @Composable
-private fun PhoneCard(url: String?, qr: ImageBitmap?) {
+internal fun PhoneCard(url: String?, qr: ImageBitmap?) {
     Column(Modifier.width(220.dp).padding(top = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             Modifier.size(176.dp).smoothBackground(Color.White, 18.dp).padding(14.dp),
