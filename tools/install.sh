@@ -83,6 +83,16 @@ if [ "$FLAVOR" = repair ]; then
   exit 1
 fi
 
+# Snapshot before installing too: a first install must not obscure the previous HOME selection.
+source tools/restore-state.sh
+SNAPSHOT_CREATED=0
+CONFIG_STARTED=0
+cleanup_unused_snapshot() {
+  if [ "$SNAPSHOT_CREATED" = 1 ] && [ "$CONFIG_STARTED" = 0 ]; then clear_restore_state || true; fi
+}
+trap cleanup_unused_snapshot EXIT
+snapshot_state
+
 # Path of the APK for a flavor: APK_FILE, a local build, or the latest release.
 build() {
   local flavor=$1
@@ -113,7 +123,10 @@ version_code() {   # versionCode of the APK on disk; empty without the Android S
 }
 
 installed_code() {
-  adb shell dumpsys package "$PKG" 2>/dev/null | sed -n 's/.*versionCode=\([0-9]*\).*/\1/p' | head -1
+  local info
+  # A first install has no package yet. Some firmwares return nonzero for that query.
+  info=$(adb shell dumpsys package "$PKG" 2>/dev/null) || return 0
+  printf '%s\n' "$info" | sed -n 's/.*versionCode=\([0-9]*\).*/\1/p' | head -1
 }
 
 # Installed by now: the expected versionCode when known, else any change from before.
@@ -187,6 +200,7 @@ if ! OUT=$(adb install -r "$APK" 2>&1); then
 fi
 
 # Grants that only ADB can give; Aerial never asks for them on screen.
+CONFIG_STARTED=1
 adb shell pm grant "$PKG" android.permission.ACCESS_FINE_LOCATION 2>/dev/null || true   # Wi-Fi name
 adb shell pm grant "$PKG" android.permission.WRITE_SECURE_SETTINGS 2>/dev/null || true  # keep Home Guard (and ADB) on
 adb shell appops set "$PKG" SYSTEM_ALERT_WINDOW allow 2>/dev/null || true             # open Aerial after boot
@@ -229,11 +243,6 @@ if ! adb shell am start -W -n "$PKG/.MainActivity" | grep -q "Status: ok"; then
   echo "Aerial did not start; Home was left untouched." >&2
   exit 1
 fi
-
-resolve_home() {
-  adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME \
-    | tail -n 1 | tr -d '\r'
-}
 
 if [ "$FLAVOR" = standard ]; then
   # Hisense VIDAA (MT9653, Android 11, #40) starts the launcher named in this property by explicit

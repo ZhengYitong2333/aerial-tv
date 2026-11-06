@@ -279,7 +279,8 @@ fun AppMenu(
                         }
                     }
                     MenuPage.Rename -> {
-                        val names = LocalContext.current.resources.getStringArray(R.array.folder_names).toList()
+                        val resources = androidx.compose.ui.platform.LocalResources.current
+                        val names = remember(resources) { resources.getStringArray(R.array.folder_names).toList() }
                         val current = folder?.name
                         // The folder's own name first, ticked, so OK on it changes nothing.
                         (listOfNotNull(current) + names.filter { it != current }).forEachIndexed { i, name ->

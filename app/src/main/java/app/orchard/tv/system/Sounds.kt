@@ -27,7 +27,7 @@ import app.orchard.tv.settings.UiSounds
  */
 object Sounds {
     private var audio: AudioManager? = null
-    private var app: Context? = null
+    private var app: android.app.Application? = null
     private var pool: SoundPool? = null
     private var move = 0
     private var select = 0
@@ -38,14 +38,22 @@ object Sounds {
     private var tickedFor = -1L
 
     fun init(context: Context) {
-        if (audio == null) audio = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-        if (app == null) app = context.applicationContext
+        if (audio == null) audio = context.applicationContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        if (app == null) app = context.applicationContext as android.app.Application
         prepare()
     }
 
     /** Loads Aerial's own set ahead of the first press when it is the one chosen; loading takes a moment. */
     fun prepare() {
         if (AerialSettings.uiSounds == UiSounds.Aerial) ownPool()
+        else release()
+    }
+
+    /** The background launcher needs no native sound mixer or decoded UI samples. */
+    fun release() {
+        pool?.release()
+        pool = null
+        move = 0; select = 0; back = 0; limit = 0
     }
 
     /** Aerial's own set, loaded the first time it is needed. */

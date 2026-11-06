@@ -55,7 +55,7 @@ object Weather {
     var chosen by mutableStateOf(false); private set
 
     private lateinit var prefs: SharedPreferences
-    private lateinit var app: Context
+    private lateinit var app: android.app.Application
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var started = false
     private var lastAttempt = 0L
@@ -64,7 +64,7 @@ object Weather {
     fun init(context: Context) {
         if (started) return
         started = true
-        app = context.applicationContext
+        app = context.applicationContext as android.app.Application
         prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         place = prefs.getString("place", null)
         chosen = prefs.getBoolean("chosen", false)

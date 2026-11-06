@@ -1,5 +1,7 @@
 package app.orchard.tv.guard
 
+import androidx.core.content.edit
+
 import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.ComponentName
@@ -71,7 +73,7 @@ object GuardSetup {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_OFF_IN_STANDBY, false)
 
     fun setOffInStandby(context: Context, off: Boolean) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_OFF_IN_STANDBY, off).commit()
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit(commit = true) { putBoolean(KEY_OFF_IN_STANDBY, off) }
     }
 
     /** Whether the guard is to stay out now: opted in and the screen is off. */
@@ -126,7 +128,7 @@ object GuardSetup {
      * and whatever the viewer sees now was uncovered rather than chosen.
      */
     fun setHomeInFront(context: Context, inFront: Boolean) =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_HOME_IN_FRONT, inFront).apply()
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putBoolean(KEY_HOME_IN_FRONT, inFront) }
 
     fun wasHomeInFront(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_HOME_IN_FRONT, false)
@@ -139,7 +141,7 @@ object GuardSetup {
      * install kills this process.
      */
     fun noteInstallerOpened(context: Context) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putLong(KEY_INSTALLER_OPENED, System.currentTimeMillis()).commit()
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit(commit = true) { putLong(KEY_INSTALLER_OPENED, System.currentTimeMillis()) }
     }
 
     /** Whether Control Center opened the installer in the last 15 minutes; asks only once. */
@@ -147,7 +149,7 @@ object GuardSetup {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val at = prefs.getLong(KEY_INSTALLER_OPENED, 0L)
         if (at == 0L) return false
-        prefs.edit().remove(KEY_INSTALLER_OPENED).apply()
+        prefs.edit { remove(KEY_INSTALLER_OPENED) }
         return System.currentTimeMillis() - at in 0..15 * 60_000L
     }
 
@@ -176,7 +178,7 @@ object GuardSetup {
         val now = System.currentTimeMillis()
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val recent = recentRevivals(context, now) + now
-        prefs.edit().putString(KEY_REVIVALS, recent.joinToString(",")).apply()
+        prefs.edit { putString(KEY_REVIVALS, recent.joinToString(",")) }
     }
 
     /** Whether this process has counted itself as revived; see noteRevival. */
@@ -202,7 +204,7 @@ object GuardSetup {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_KEEP_ADB, false)
 
     fun setKeepAdb(context: Context, keep: Boolean) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_KEEP_ADB, keep).apply()
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putBoolean(KEY_KEEP_ADB, keep) }
         if (keep) ensureAdb(context)
     }
 
@@ -326,7 +328,7 @@ object GuardSetup {
      * back on every boot, so Aerial puts itself back each time it starts.
      */
     fun setOwnScreensaver(context: Context, own: Boolean) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_OWN_SCREENSAVER, own).apply()
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit { putBoolean(KEY_OWN_SCREENSAVER, own) }
         if (own) keepScreensaver(context)
     }
 
@@ -339,7 +341,7 @@ object GuardSetup {
         val mine = ComponentName(context, AerialDream::class.java).flattenToString()
         // 1.6 and earlier: the class was OrchardDream, and install.sh had claimed the screensaver.
         val renamed = "${context.packageName}/${context.packageName}.dream.OrchardDream" in current
-        if (renamed) prefs.edit().putBoolean(KEY_OWN_SCREENSAVER, true).apply()
+        if (renamed) prefs.edit { putBoolean(KEY_OWN_SCREENSAVER, true) }
         if (!prefs.getBoolean(KEY_OWN_SCREENSAVER, false) || current == mine) return
         // "System" chosen in Personalize: the firmware's dream stays (screensaverModeChanged).
         if (systemChosen(context)) return
@@ -365,11 +367,11 @@ object GuardSetup {
                 if (Settings.Secure.getString(resolver, "screensaver_components") != mine) return
                 if (Settings.Secure.getInt(resolver, KEY_SCREENSAVER_ENABLED, 1) == 0) return
                 Settings.Secure.putInt(resolver, KEY_SCREENSAVER_ENABLED, 0)
-                prefs.edit().putBoolean(KEY_SCREENSAVER_SWITCHED_OFF, true).apply()
+                prefs.edit { putBoolean(KEY_SCREENSAVER_SWITCHED_OFF, true) }
                 Log.i(TAG, "screensaver set to never; switched the system's off")
             } else if (prefs.getBoolean(KEY_SCREENSAVER_SWITCHED_OFF, false)) {
                 Settings.Secure.putInt(resolver, KEY_SCREENSAVER_ENABLED, 1)
-                prefs.edit().remove(KEY_SCREENSAVER_SWITCHED_OFF).apply()
+                prefs.edit { remove(KEY_SCREENSAVER_SWITCHED_OFF) }
                 Log.i(TAG, "screensaver delay chosen; switched the system's back on")
             }
         }.onFailure { Log.w(TAG, "could not change the system screensaver", it) }

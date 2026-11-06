@@ -1,5 +1,9 @@
 package app.orchard.tv.apps
 
+import androidx.core.graphics.withSave
+
+import androidx.core.graphics.get
+
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.ColorMatrix
@@ -173,7 +177,7 @@ object TileArtFactory {
             // whose y runs from -960 to 0, or a logo's 24-unit box inset by Material's margin.
             val g = H * (if (two) 0.36f else 0.42f)
             val box = device?.markBox ?: 960f
-            save()
+            withSave {
             translate((W - g) / 2f, H * (if (two) 0.31f else 0.36f) - g / 2f)
             if (box == 960f) {
                 scale(g / 960f, g / 960f)
@@ -183,7 +187,7 @@ object TileArtFactory {
                 scale(g * 5f / 6f / box, g * 5f / 6f / box)
             }
             drawPath(path, white)
-            restore()
+            }
             val title = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = 0xFFFFFFFF.toInt(); textSize = H * 0.15f; textAlign = Paint.Align.CENTER
                 typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
@@ -597,7 +601,7 @@ object TileArtFactory {
     private fun opaqueCorners(b: Bitmap): Boolean {
         val i = (b.width * 0.03f).roundToInt()
         val e = b.width - 1 - i
-        return listOf(b.getPixel(i, i), b.getPixel(e, i), b.getPixel(i, e), b.getPixel(e, e))
+        return listOf(b[i, i], b[e, i], b[i, e], b[e, e])
             .all { android.graphics.Color.alpha(it) > 200 }
     }
 
@@ -789,7 +793,7 @@ object TileArtFactory {
         var r = 0.0; var g = 0.0; var bl = 0.0; var total = 0.0
         val hsv = FloatArray(3)
         for (y in 0 until small.height) for (x in 0 until small.width) {
-            val c = small.getPixel(x, y)
+            val c = small[x, y]
             if (android.graphics.Color.alpha(c) < 128) continue
             android.graphics.Color.colorToHSV(c, hsv)
             val wgt = hsv[1] * hsv[2] * hsv[2] + 0.04

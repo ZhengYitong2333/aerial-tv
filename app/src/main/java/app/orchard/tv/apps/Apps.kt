@@ -1,5 +1,7 @@
 package app.orchard.tv.apps
 
+import androidx.core.graphics.drawable.toDrawable
+
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -67,7 +69,7 @@ fun sourceEntry(context: Context, source: TvSource): AppEntry {
     val made = SourceArt(look, source.label, source.deviceName, CustomIcons.stamp(key), TileArtFactory.W)
     val art = synchronized(sourceArt) { sourceArt[key]?.takeIf { it.first == made }?.second } ?: run {
         val custom = CustomIcons.load(key)
-        (if (custom != null) TileArtFactory.fromBanner(android.graphics.drawable.BitmapDrawable(android.content.res.Resources.getSystem(), custom))
+        (if (custom != null) TileArtFactory.fromBanner(custom.toDrawable(android.content.res.Resources.getSystem()))
         // A chosen device's mark goes on alone, its name on the caption; a typed name still shows.
         else if (look?.device != null && look.name == null) TileArtFactory.forSource(source.kind, null, null, look.device)
         else if (name != null) TileArtFactory.forSource(source.kind, name, source.label, look?.device)
@@ -350,7 +352,7 @@ object AppCatalog {
             // Android's default one, so it is always there.
             art = runCatching {
                 when {
-                    custom != null -> TileArtFactory.fromBanner(android.graphics.drawable.BitmapDrawable(android.content.res.Resources.getSystem(), custom))
+                    custom != null -> TileArtFactory.fromBanner(custom.toDrawable(android.content.res.Resources.getSystem()))
                     own != null -> TileArtFactory.forSystem(own)
                     recipe?.glyph != null -> TileArtFactory.glyphTile(recipe.top ?: 0, recipe.bottom ?: 0, recipe.glyph)
                     banner != null && recipe?.useIcon != true -> TileArtFactory.fromBanner(banner)

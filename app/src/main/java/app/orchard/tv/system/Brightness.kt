@@ -1,5 +1,7 @@
 package app.orchard.tv.system
 
+import androidx.core.content.edit
+
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
@@ -66,6 +68,8 @@ object Brightness {
 
     /** Current level as 0..1, or null when Aerial cannot change it on this TV. */
     fun level(context: Context): Float? {
+        // Z7X's light output lives in its settings service, not SCREEN_BRIGHTNESS (issue #241).
+        if (SystemProbe.hasXgimiSettings(context)) return null
         val r = context.contentResolver
         if (isTcl(context)) TclPicture.backlight(context)?.let { return it / 100f }
         return when {
@@ -109,7 +113,7 @@ object Brightness {
                 MitvPanel.setBacklight(context, from, next)
                 mitvLevel = next
                 context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                    .edit().putInt(KEY_MITV_LEVEL, next).apply()
+                    .edit { putInt(KEY_MITV_LEVEL, next) }
             }
             // Return what was asked for rather than reading it back: the MiTV middleware animates
             // the panel and its getter reports the transient level, which made the slider jump.

@@ -76,7 +76,7 @@ object Wallpapers {
     /** The built-ins Personalize offers, one or two of each family; the rest stay for whoever chose them. */
     val FEATURED_BUILTINS = setOf("grad:hills_dawn", "grad:hills_night", "grad:dunes_gold", "grad:sea_sunset", "grad:waves_blue", "grad:aurora")
 
-    private lateinit var app: Context
+    private lateinit var app: android.app.Application
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val io = Mutex()
     private val prefs by lazy { app.getSharedPreferences("wallpaper", Context.MODE_PRIVATE) }
@@ -84,7 +84,10 @@ object Wallpapers {
     private val photoDir by lazy { File(app.filesDir, "photos").apply { mkdirs() } }
     private val liveFrame by lazy { File(app.filesDir, "live-frame.jpg") }
     private val bakedDir by lazy { File(app.filesDir, "backdrop").apply { mkdirs() } }
-    private val thumbs = HashMap<String, Bitmap>()
+    private val thumbs = ThumbnailCache()
+
+    /** Cached previews can be reconstructed; visible bitmaps are never manually recycled. */
+    fun trimThumbnails() { thumbs.clear() }
 
     var items by mutableStateOf<List<Wallpaper>>(emptyList()); private set
     var selectedId by mutableStateOf(LATEST_DAILY); private set
@@ -121,7 +124,7 @@ object Wallpapers {
     fun init(context: Context) {
         if (started) return
         started = true
-        app = context.applicationContext
+        app = context.applicationContext as android.app.Application
         context.resources.displayMetrics.let {
             screenW = maxOf(it.widthPixels, it.heightPixels)
             screenH = minOf(it.widthPixels, it.heightPixels)
@@ -496,21 +499,23 @@ object Wallpapers {
 
     // ---- uploads ----
 
-    /** Stores an uploaded picture, downscaled to at most 2560 px wide, and returns its id. */
+    /** Stores an uploaded picture, bounded to 2560 px on either side, and returns its id. */
     suspend fun addPhoto(input: InputStream): String? = io.withLock {
         val id = withContext(Dispatchers.IO) {
             val tmp = File.createTempFile("upload", ".bin", app.cacheDir)
             try {
                 tmp.outputStream().use { input.copyTo(it) }
-                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                BitmapFactory.decodeFile(tmp.path, bounds)
-                if (bounds.outWidth <= 0) return@withContext null
-                var sample = 1
-                while (bounds.outWidth / (sample * 2) >= 2560) sample *= 2
-                val bmp = BitmapFactory.decodeFile(tmp.path, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return@withContext null
+                val bmp = PhotoImport.decode(tmp) ?: return@withContext null
                 val name = System.currentTimeMillis().toString(36)
-                File(photoDir, "$name.jpg").outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 90, it) }
-                bmp.recycle()
+                val target = File(photoDir, "$name.jpg")
+                try {
+                    if (!target.outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 90, it) }) {
+                        target.delete()
+                        return@withContext null
+                    }
+                } finally {
+                    bmp.recycle()
+                }
                 "photo:$name"
             } finally {
                 tmp.delete()

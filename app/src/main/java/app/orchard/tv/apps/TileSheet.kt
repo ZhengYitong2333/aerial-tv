@@ -17,7 +17,7 @@ import java.io.File
  * [TileArtFactory]. Started from a computer (see ConfigReceiver):
  *
  *   adb shell am broadcast -a app.orchard.tv.CONFIG -n app.orchard.tv/.guard.ConfigReceiver --es export_tiles before
- *   adb pull /sdcard/Android/data/app.orchard.tv/files/tiles/before.png
+ *   adb exec-out content read --uri content://app.orchard.tv.diagnostics/tiles/before > before.png
  *
  * Installed apps come first, as Home draws them. APKs pushed to files/tiles/apks/ (from another
  * TV, say) follow, drawn as if installed; they only need their manifest and resources.
@@ -29,6 +29,7 @@ object TileSheet {
     private const val LABEL = 44
 
     suspend fun export(context: Context, name: String): File? {
+        require(name.matches(Regex("[A-Za-z0-9_-]{1,40}")))
         CustomIcons.init(context)
         val dir = File(context.getExternalFilesDir(null) ?: return null, "tiles").apply { mkdirs() }
         val pm = context.packageManager
@@ -63,12 +64,11 @@ object TileSheet {
             val shown = TextUtils.ellipsize(label, text, w.toFloat(), TextUtils.TruncateAt.END).toString()
             canvas.drawText(shown, x + w / 2f, y + h + 32f, text)
         }
-        val out = File(dir, "$name.png")
+        val exports = File(context.filesDir, "tile-exports").apply { mkdirs() }
+        val out = File(exports, "$name.png")
         out.outputStream().use { sheet.compress(Bitmap.CompressFormat.PNG, 100, it) }
         sheet.recycle()
-        // Written as the app's user; ADB's shell may only read it if it is world-readable.
-        out.setReadable(true, false)
-        Log.i(TAG, "Wrote ${tiles.size} tiles to $out")
+        Log.i(TAG, "Wrote ${tiles.size} tiles; read with content://${context.packageName}.diagnostics/tiles/$name")
         return out
     }
 }

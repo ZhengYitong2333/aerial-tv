@@ -1,5 +1,7 @@
 package app.orchard.tv.wallpaper
 
+import androidx.core.graphics.set
+
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -45,7 +47,7 @@ import java.security.SecureRandom
  * minutes after, so an upload can finish), and every address carries a random token shown only in
  * the QR code, so another device on the network cannot use it by guessing.
  */
-class PhoneServer private constructor(private val context: Context, private val token: String) : NanoHTTPD(PORT) {
+class PhoneServer private constructor(private val context: android.app.Application, private val token: String) : NanoHTTPD(PORT) {
 
     override fun serve(session: IHTTPSession): Response {
         val prefix = "/$token"
@@ -359,7 +361,7 @@ class PhoneServer private constructor(private val context: Context, private val 
         @Synchronized
         fun start(context: Context): String? {
             val ip = lanAddress(context) ?: return null
-            val server = running ?: PhoneServer(context.applicationContext, newToken()).also {
+            val server = running ?: PhoneServer(context.applicationContext as android.app.Application, newToken()).also {
                 runCatching { it.start(SOCKET_READ_TIMEOUT, true) }.onFailure { return null }
                 running = it
             }
@@ -393,8 +395,8 @@ class PhoneServer private constructor(private val context: Context, private val 
             val n = matrix.width
             val bmp = createBitmap(n * scale, n * scale)
             for (y in 0 until n) for (x in 0 until n) {
-                if (matrix[x, y]) for (dy in 0 until scale) for (dx in 0 until scale) bmp.setPixel(x * scale + dx, y * scale + dy, Color.BLACK)
-                else for (dy in 0 until scale) for (dx in 0 until scale) bmp.setPixel(x * scale + dx, y * scale + dy, Color.WHITE)
+                if (matrix[x, y]) for (dy in 0 until scale) for (dx in 0 until scale) bmp[x * scale + dx, y * scale + dy] = Color.BLACK
+                else for (dy in 0 until scale) for (dx in 0 until scale) bmp[x * scale + dx, y * scale + dy] = Color.WHITE
             }
             return bmp
         }

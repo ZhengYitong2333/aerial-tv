@@ -1,5 +1,9 @@
 package app.orchard.tv
 
+import androidx.core.graphics.drawable.toDrawable
+
+import androidx.core.content.edit
+
 import android.app.ActivityOptions
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -128,8 +132,10 @@ class MainActivity : ComponentActivity() {
         DiagLog.i("onCreate before the user is unlocked; showing the kept backdrop")
         val picture = Wallpapers.lockedBootBackdrop(this)?.takeIf { it.exists() }
             ?.let { runCatching { BitmapFactory.decodeFile(it.path) }.getOrNull() }
-        window.setBackgroundDrawable(picture?.let { BitmapDrawable(resources, it) } ?: ColorDrawable(Color.BLACK))
-        ContextCompat.registerReceiver(this, unlocked, IntentFilter(Intent.ACTION_USER_UNLOCKED), ContextCompat.RECEIVER_EXPORTED)
+        window.setBackgroundDrawable(picture?.let { it.toDrawable(resources) } ?: Color.BLACK.toDrawable())
+        if (Build.VERSION.SDK_INT >= 24) {
+            ContextCompat.registerReceiver(this, unlocked, IntentFilter(Intent.ACTION_USER_UNLOCKED), ContextCompat.RECEIVER_EXPORTED)
+        }
         // Unlocked between the check and the registration.
         if (GuardSetup.isUserUnlocked(this)) startReal(null)
     }
@@ -183,7 +189,7 @@ class MainActivity : ComponentActivity() {
         // baked at the last start, so the window never shows black while Compose sets up. Without
         // one, keep what the window already shows (the kept backdrop of a locked start).
         val baked = Wallpapers.backdrop
-        if (baked != null) window.setBackgroundDrawable(BitmapDrawable(resources, baked.asAndroidBitmap()))
+        if (baked != null) window.setBackgroundDrawable(baked.asAndroidBitmap().toDrawable(resources))
         // Clear whatever the window showed until the first frame (the baked backdrop, or the kept
         // one of a locked start): from then on Home paints every pixel itself.
         window.decorView.viewTreeObserver.addOnDrawListener(object : ViewTreeObserver.OnDrawListener {
@@ -282,7 +288,7 @@ class MainActivity : ComponentActivity() {
         val boot = Settings.Global.getInt(contentResolver, Settings.Global.BOOT_COUNT, -1)
         val prefs = getSharedPreferences("system", MODE_PRIVATE)
         if (boot < 0 || prefs.getInt("boot_source_boot", -2) == boot) return false
-        prefs.edit().putInt("boot_source_boot", boot).apply()
+        prefs.edit { putInt("boot_source_boot", boot) }
         return true
     }
 
@@ -384,9 +390,7 @@ class MainActivity : ComponentActivity() {
     private fun display(): android.view.Display? =
         if (Build.VERSION.SDK_INT >= 30) display else @Suppress("DEPRECATION") windowManager.defaultDisplay
 
-    private fun systemProperty(key: String): String? = runCatching {
-        Class.forName("android.os.SystemProperties").getMethod("get", String::class.java).invoke(null, key) as String
-    }.getOrNull()
+    private fun systemProperty(key: String): String? = app.orchard.tv.system.VendorAccess.property(key)
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
@@ -497,6 +501,8 @@ class MainActivity : ComponentActivity() {
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
+    // Override the public Activity callback; AndroidX's internal bridge carries a library restriction.
+    @android.annotation.SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (locked) return super.dispatchKeyEvent(event)
         if (event.keyCode == dreamWokeKey) {
@@ -620,6 +626,7 @@ class MainActivity : ComponentActivity() {
     /** What onResume does once the user is unlocked; also run by a start that was locked before. */
     private fun resumeWork() {
         vm.resumed = true
+        Sounds.prepare()
         DiagLog.i("onResume; screensaver after ${idleBeforeScreensaver() / 1000} s")
         restartIdleTimer()
         GuardSetup.setHomeInFront(this, true)
@@ -650,10 +657,18 @@ class MainActivity : ComponentActivity() {
         super.onStop()
         if (locked) return
         DiagLog.i("onStop")
+        Sounds.release()
         unregisterReceiver(packageReceiver)
         unregisterReceiver(volumeReceiver)
         unregisterReceiver(dayReceiver)
         runCatching { getSystemService<ConnectivityManager>()?.unregisterNetworkCallback(networkCallback) }
+    }
+
+    // Older TV firmware still sends these memory-pressure callbacks; cached previews are expendable.
+    @Suppress("DEPRECATION")
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) Wallpapers.trimThumbnails()
     }
 
     /** Opens an app, growing it out of its tile. */
@@ -664,6 +679,11 @@ class MainActivity : ComponentActivity() {
             return
         }
         openedAppSinceHome = true
+        // Pinned inputs may open a firmware service (XGIMI), as Control Center's inputs do.
+        if (app.source != null) {
+            open(app.launchIntent())
+            return
+        }
         // The stock launcher (Xiaomi's PatchWall, with the maker's own iQIYI / Mango content) opens
         // through the system Home action where it can; see HomeGuardService.openStockLauncher.
         if (HomeGuardService.isStockHome(app.packageName) &&
@@ -682,6 +702,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun open(intent: Intent) {
+        if (AerialSettings.locked && SystemProbe.isSettingsIntent(this, intent)) {
+            vm.whenUnlocked { open(intent) }
+            return
+        }
         try {
             SystemProbe.startSettingsIntent(this, intent)
         } catch (e: Exception) {

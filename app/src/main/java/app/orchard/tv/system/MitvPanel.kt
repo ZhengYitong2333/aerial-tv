@@ -189,9 +189,7 @@ object MitvPanel {
     /** The `ITvSettingManager` binder behind `TvService`, or null when the binder is missing. */
     private fun settingService(): IBinder? {
         val tvService = runCatching {
-            val serviceManager = Class.forName("android.os.ServiceManager")
-            val getService = serviceManager.getMethod("getService", String::class.java)
-            getService.invoke(null, "TvService") as? IBinder
+            VendorAccess.service("TvService")
         }.onFailure { Log.w(TAG, "TvService lookup failed: $it") }.getOrNull()
         if (tvService == null) {
             Log.w(TAG, "TvService binder missing")

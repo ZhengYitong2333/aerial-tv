@@ -185,9 +185,7 @@ object Diagnostics {
     private fun global(context: Context, key: String) = runCatching { Settings.Global.getString(context.contentResolver, key) }.getOrElse { "unreadable" }
     private fun system(context: Context, key: String) = runCatching { Settings.System.getString(context.contentResolver, key) }.getOrElse { "unreadable" }
 
-    private fun prop(key: String): String? = runCatching {
-        Class.forName("android.os.SystemProperties").getMethod("get", String::class.java).invoke(null, key) as String
-    }.getOrNull()
+    private fun prop(key: String): String? = VendorAccess.property(key)
 
     /** This process's own lines (all an app may read), from Aerial's tags and crashes. */
     private fun logcat(): List<String> = runCatching {

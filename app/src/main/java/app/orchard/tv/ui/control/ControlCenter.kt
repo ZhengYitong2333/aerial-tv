@@ -211,7 +211,7 @@ private fun MainPage(vm: HomeViewModel, now: LocalDateTime, takeFocus: Boolean, 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             RoundButton(Glyph.Input, stringResource(R.string.cc_inputs), focusRequester = first) {
                 // TCL lists no inputs to Android; its own input panel is the next best thing.
-                vm.overlay = if (vm.sources.isEmpty() && SystemProbe.openInputPicker(context)) Overlay.None
+                vm.overlay = if ((vm.sources.isEmpty() || SystemProbe.hasXgimiSettings(context)) && SystemProbe.openInputPicker(context)) Overlay.None
                 else Overlay.ControlCenter(CcPage.Inputs)
             }
             RoundButton(
@@ -506,8 +506,10 @@ private fun BrightnessRow(vm: HomeViewModel) {
     val level = vm.brightness
     if (level == null) {
         MenuRow(Glyph.Sun, stringResource(R.string.cc_brightness), onClick = {
-            vm.overlay = Overlay.None
-            SystemProbe.openPictureSettings(context)
+            vm.whenUnlocked {
+                vm.overlay = Overlay.None
+                SystemProbe.openPictureSettings(context)
+            }
         }, trailing = stringResource(R.string.cc_brightness_in_settings) + " ›")
     } else {
         SliderRow(

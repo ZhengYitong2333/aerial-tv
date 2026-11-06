@@ -1,5 +1,7 @@
 package app.orchard.tv.wallpaper
 
+import androidx.core.net.toUri
+
 import android.content.Context
 import android.os.SystemClock
 import android.util.Log
@@ -137,7 +139,7 @@ object AerialStream {
             val key = key(film, quality)
             val started = SystemClock.elapsedRealtime()
             runCatching {
-                val uri = android.net.Uri.parse(url(film, quality, overHttp))
+                val uri = url(film, quality, overHttp).toUri()
                 val length = contentLength(uri)
                 ContentMetadataMutations().also { ContentMetadataMutations.setContentLength(it, length) }
                     .let { cache.applyContentMetadataMutations(key, it) }

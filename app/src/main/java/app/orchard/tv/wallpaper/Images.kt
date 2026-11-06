@@ -1,5 +1,7 @@
 package app.orchard.tv.wallpaper
 
+import androidx.core.graphics.scale
+
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -75,7 +77,7 @@ object Images {
     fun frost(b: Bitmap): Bitmap {
         val w = 320
         val h = 180
-        val small = Bitmap.createScaledBitmap(b, w, h, true)
+        val small = b.scale(w, h, true)
         val px = IntArray(w * h)
         small.getPixels(px, 0, w, 0, 0, w, h)
         repeat(3) { boxBlur(px, w, h, 7) }

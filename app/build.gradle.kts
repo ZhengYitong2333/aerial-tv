@@ -16,8 +16,8 @@ android {
         // Android 5.0. Compose 1.10 and later need 6.0, so the Compose BOM below stays on 1.9.
         minSdk = 21
         targetSdk = 34
-        versionCode = 55
-        versionName = "1.47"
+        versionCode = 59
+        versionName = "1.47-local.4"
         // `./gradlew -Pdiag ...`: a build for one reporter's TV whose logcat shows no app lines;
         // see system/DiagLog.kt.
         val diag = project.hasProperty("diag")
@@ -75,6 +75,9 @@ android {
     testOptions {
         unitTests.isIncludeAndroidResources = true
     }
+    lint {
+        lintConfig = file("lint.xml")
+    }
     packaging {
         resources.excludes += setOf("/META-INF/{AL2.0,LGPL2.1}", "DebugProbesKt.bin", "kotlin-tooling-metadata.json")
     }
@@ -87,6 +90,7 @@ kotlin {
 dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.robolectric:robolectric:4.17")
+    testImplementation("androidx.compose.ui:ui-test-junit4")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     // Compose 1.9.5, the last release that runs on Android 5.0 (1.10 raised minSdk to 23).
     val composeBom = platform("androidx.compose:compose-bom:2025.11.01")
@@ -94,8 +98,8 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.animation:animation")
-    implementation("androidx.activity:activity-compose:1.10.1")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.2")
+    implementation("androidx.activity:activity-compose:1.11.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.4")
     implementation("androidx.core:core-ktx:1.16.0")
     // Aerial films. 1.8 is the last Media3 that runs on Android 5.0 (1.9 raised minSdk to 23).
     implementation("androidx.media3:media3-exoplayer:1.8.1")
@@ -103,5 +107,5 @@ dependencies {
     implementation("androidx.media3:media3-database:1.8.1")
     // Phone setup page (a tiny LAN web server) and the QR code that opens it.
     implementation("org.nanohttpd:nanohttpd:2.3.1")
-    implementation("com.google.zxing:core:3.5.3")
+    implementation("com.google.zxing:core:3.5.4")
 }

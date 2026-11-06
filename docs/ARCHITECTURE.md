@@ -236,6 +236,18 @@ NanoHTTPD 监听 8790 端口，路径前缀是 8 位随机令牌（每次打开�
 ## 资源与第三方
 
 - 字体：Inter 可变字体（OFL，许可证在 `FONT-LICENSE-OFL.txt`）。
-- 依赖：Compose BOM 2026.02.01、activity-compose、lifecycle-viewmodel-compose、core-ktx、NanoHTTPD 2.3.1、ZXing core 3.5.3。
+- 依赖：Compose BOM 2026.02.01、activity-compose、lifecycle-viewmodel-compose、core-ktx、NanoHTTPD 2.3.1、ZXing core 3.5.4。
 - 航拍目录由 Apple 的 `resources-16.tar` 生成（生成方法见 HANDOFF.md）。
 - 信号源磁贴的 Apple TV、PlayStation 标志：Simple Icons 16.35.0（CC0），只用来标明接的是什么设备。
+
+
+## 本地资源与导出约束（local.3）
+
+壁纸缩略图以 allocationByteCount 计费，LRU 缓存最多 8 MiB；淘汰只释放引用，不 recycle 仍可能显示的位图。内存紧张回调清空缓存。日志最多 600 条/128 Ki 字符，每条最多 4096 字符；单线程写入队列最多 128 项，拥塞丢弃最旧任务，空闲 10 秒后线程退出。Activity 后台释放 SoundPool，前台按配置准备。
+
+日志保存于 files/diagnostics，磁贴导出保存于 files/tile-exports。DiagnosticExportProvider 要求 android.permission.DUMP，只允许固定日志路径与限定名称 PNG，只读并校验 canonical 路径；历史外部导出文件未自动删除。Revival 服务要求 signature 权限并检查 framework action，仍须实际 OEM 固件验证系统绑定。
+
+local.3 的 app/lint.xml 接受已核对的 9 项依赖、Gradle 和 target SDK 升级提醒，保留 minSdk21。厂商隐藏 API 使用缓存反射和失败回退；SDK24 以下公开 APK 安装兼容路径仍需要文件可读权限。lint 无报告项不代表已升级依赖或通过实机验收。
+
+
+local.4 更新 Activity Compose 1.11.0、Lifecycle 2.9.4、ZXing 3.5.4；前两项下载的 AAR Manifest 声明 minSdk21，应用合并 Manifest 仍为 21。移除其旧版本 lint 豁免，保留较新版本提醒；其余 6 项兼容例外不变。

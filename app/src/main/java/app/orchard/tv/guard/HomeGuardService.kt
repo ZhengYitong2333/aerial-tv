@@ -402,7 +402,7 @@ class HomeGuardService : AccessibilityService() {
             goHome(woke = true)
             return
         }
-        if (!stockInFront && last != null) Log.i(TAG, "$reason with ${last.first} in front; leaving it there")
+        if (!stockInFront) Log.i(TAG, "$reason with ${last.first} in front; leaving it there")
         if (!stockInFront || SystemClock.uptimeMillis() < allowStockUntil) return
         Log.i(TAG, "$reason with the stock launcher in front; bringing Aerial back")
         goHome(woke)
@@ -643,6 +643,9 @@ class HomeGuardService : AccessibilityService() {
      * #471). Apps may send it up to Android 11 only; from 12 keys are filtered only in Aerial.
      * The guard's own homeKey receiver ignores it: Aerial was brought back just before.
      */
+    // Intentionally reach system panels, not just our non-exported home-key listener. This public
+    // platform broadcast carries no private data and is sent only on Android 11 and earlier.
+    @android.annotation.SuppressLint("UnsafeImplicitIntentLaunch")
     private fun closeSystemDialogs() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) return
         @Suppress("DEPRECATION")
@@ -678,6 +681,18 @@ class HomeGuardService : AccessibilityService() {
         }
         if (!GuardSetup.isUserUnlocked(this)) return
         val allowed = SystemClock.uptimeMillis() < allowStockUntil
+        // Some GMUI builds resolve HOME to an invisible chooser that is absent from the HOME
+        // candidates (issue #44). Match the exact resolved activity, never every window in its
+        // package: settings and permission dialogs may live beside it in the framework package.
+        if (!allowed && pkg != packageName && cls !in stockHomes[pkg].orEmpty() &&
+            isResolvedHomeWindow(pkg, cls)
+        ) {
+            if (SystemClock.uptimeMillis() - broughtBackAt >= 1_000) {
+                Log.i(TAG, "resolved Home $pkg/$cls in front; bringing Aerial back")
+                goHome(woke = SystemClock.elapsedRealtime() - screenOnAt < WAKE_WINDOW_MS)
+            }
+            return
+        }
         if (pkg in stockHomes) {
             // Any of its screens, uncovered once the installer of an update from Control Center closed.
             if (!allowed && isActivity(pkg, cls) && GuardSetup.installerJustClosed(this)) {
@@ -721,6 +736,18 @@ class HomeGuardService : AccessibilityService() {
         packageManager.getLeanbackLaunchIntentForPackage(pkg) != null || packageManager.getLaunchIntentForPackage(pkg) != null
 
     private fun isDefaultHome(): Boolean = resolvedHome() == packageName
+
+    private fun isResolvedHomeWindow(pkg: String, cls: String): Boolean {
+        if (pkg in NOT_LAUNCHERS) return false
+        val resolved = packageManager.resolveActivity(
+            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME),
+            PackageManager.MATCH_DEFAULT_ONLY,
+        ) ?: return false
+        // Preserve the exclusion of negative-priority provisioning/fallback activities.
+        if (resolved.priority < 0) return false
+        val info = resolved.activityInfo ?: return false
+        return info.packageName == pkg && info.name == cls
+    }
 
     private fun resolvedHome(): String? =
         packageManager.resolveActivity(

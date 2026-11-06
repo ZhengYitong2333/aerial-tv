@@ -4,6 +4,7 @@ local.properties
 .idea/
 *.iml
 .kotlin/
+__pycache__/
 
 # Machine- and household-specific: TV addresses, signing key. Hand over privately.
 local/

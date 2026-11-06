@@ -1,5 +1,7 @@
 package app.orchard.tv
 
+import androidx.core.content.edit
+
 import android.app.Application
 import android.os.Build
 import android.os.SystemClock
@@ -141,7 +143,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
                 android.content.pm.PackageManager.PERMISSION_GRANTED
             val status = SystemProbe.homeStatus(context)
             if (status == HomeStatus.NotDefault && !granted && (overlay != Overlay.None || screensaverVisible)) return@launch
-            prefs.edit().putBoolean("setup_offered", true).apply()
+            prefs.edit { putBoolean("setup_offered", true) }
             if (status == HomeStatus.NotDefault && !granted) overlay = Overlay.ControlCenter(CcPage.Setup)
         }
     }

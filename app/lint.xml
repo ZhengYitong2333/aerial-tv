@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint>
+    <!-- Reviewed compatibility pins, not runtime/security findings. The current AndroidX and
+         Media3 lines retain Android 5 support; changing target SDK affects OEM Home takeover.
+         Exact dependency/version messages keep unrelated new dependencies visible. -->
+    <issue id="GradleDependency">
+        <ignore regexp="A newer version of androidx.core:core-ktx than 1.16.0 is available:.*" />
+        <ignore regexp="A newer version of androidx.media3:media3-(exoplayer|datasource|database) than 1.8.1 is available:.*" />
+    </issue>
+    <!-- Keep the Gradle wrapper of the validated build until a separate upgrade. -->
+    <issue id="AndroidGradlePluginVersion">
+        <ignore regexp="A newer version of Gradle than 8.14.3 is available:.*" />
+    </issue>
+    <issue id="OldTargetApi">
+        <ignore path="build.gradle.kts" />
+    </issue>
+</lint>

@@ -110,6 +110,9 @@ fun WallpaperSheet(
 
     // The phone page only listens while this sheet is up, plus a few minutes so an upload that is
     // already under way can finish.
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose { PhoneServer.stop() }
+    }
     LaunchedEffect(visible) {
         if (visible) {
             val url = withContext(Dispatchers.IO) { PhoneServer.start(context) }
@@ -565,7 +568,7 @@ private fun ScreensaverChoice(onStart: () -> Unit) {
 }
 
 @Composable
-private fun PhoneCard(url: String?, qr: ImageBitmap?) {
+internal fun PhoneCard(url: String?, qr: ImageBitmap?) {
     Column(Modifier.width(220.dp).padding(top = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             Modifier.size(176.dp).clip(RoundedCornerShape(18.dp)).background(Color.White).padding(14.dp),
