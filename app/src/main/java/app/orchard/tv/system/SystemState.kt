@@ -758,15 +758,21 @@ object SystemProbe {
                 // only switches the picture (Sony BRAVIA XR90 with an Apple TV and a PS5, issue #259).
                 val cec = infos.firstOrNull { it.parentId == info.id }
                 val generic = genericRoute(cec ?: info, kind)
+                // XGIMI GMUI lists these ports, but nothing plays the passthrough VIEW. A file
+                // manager can still resolve content://, the same way Solid Explorer did on TCL
+                // (#1107), so the tile must not follow that resolve. The settings service opens
+                // the source page (Z7X, issue #241).
+                val xgimiPage = xgimiSettingsIntent(context, XGIMI_SOURCE_PAGE)
                 val intent = (if (xiaomi) xiaomiRoute(info, kind, label, profile)?.takeIf { resolves(context, it) } else null)
                     // TCL's own inputs go to TCL's player before the generic intent: a file manager
                     // answers any content:// VIEW (with the provider's cursor type), so the
                     // passthrough intent "resolved" and every source tile opened Solid Explorer
                     // (TCL 75Q10L, MT9655, Android 14, issue #1107, the reporter's adb).
                     ?: tclPlayer?.takeIf { info.id.startsWith(TCL_INPUTS) }?.let { tclRoute(it, kind, label, hw(info.id)) }
-                    ?: generic.takeIf { resolves(context, it) }
+                    ?: generic.takeIf { !passthroughLeftToVendor(it, xgimiPage) && resolves(context, it) }
                     ?: droidLogicRoute(context, info)
                     ?: tclPlayer?.let { tclRoute(it, kind, label, hw(info.id)) }
+                    ?: xgimiPage
                     ?: generic
                 val device = cec
                     ?.let { runCatching { it.loadLabel(context).toString() }.getOrNull() }
@@ -836,6 +842,23 @@ object SystemProbe {
 
     private fun resolves(context: Context, intent: Intent) =
         runCatching { context.packageManager.resolveActivity(intent, 0) != null }.getOrDefault(false)
+
+    /**
+     * The passthrough VIEW is not a switch on this TV: a vendor page replaces it. True for XGIMI
+     * GMUI, where TvInputManager lists HDMI and the VIEW either resolves to nothing or to whatever
+     * app claims content:// (issue #241).
+     */
+    internal fun passthroughLeftToVendor(intent: Intent, vendorPage: Intent?): Boolean =
+        vendorPage != null && intent.data?.host == "android.media.tv"
+
+    /** Every listed input opens XGIMI's source page, so Control Center should open that page. */
+    internal fun listedInputsNeedVendorPage(sources: List<TvSource>): Boolean {
+        val switched = sources.filter { it.id != USB_SOURCE_ID }
+        if (switched.isEmpty()) return false
+        return switched.all {
+            it.intent.component == XGIMI_SETTINGS && it.intent.getStringExtra("data") == XGIMI_SOURCE_PAGE
+        }
+    }
 
     private const val TCL_PLAYER = "com.tcl.tv"
 

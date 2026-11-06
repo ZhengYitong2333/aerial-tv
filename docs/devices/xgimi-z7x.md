@@ -11,10 +11,10 @@
 - 在「设置 → 系统信息 / 设备信息」页长按遥控器 **左 / 上 / 菜单 / 返回 / 返回+主页**，均无反应，进不去工厂模式。
 - 默认状态下 `adb connect <IP>:5555` 返回 `failed to connect ... Connection refused`。
 
-可行的做法是用第三方 APK [code-ant/z7x-adb](https://github.com/code-ant/z7x-adb)（v1.1.0 实测）：
+可行的做法是用第三方 APK [code-ant/z7x-adb](https://github.com/code-ant/z7x-adb)（v1.2.0，沿用 v1.1.0 的开启路径）：
 U 盘安装后打开运行一次，它会写入 `persist.adb.tcp.port=5555`、`service.adb.tcp.port=5555`、`persist.sys.usb.config=adb` 并重启 adbd。普通 APK 权限即可，不需要 root、系统签名，也不进工厂模式。
 
-App 里的「开机自动恢复」默认关闭，**关着的话重启后 5555 不会自己回来**，需要再打开 App 执行一次。需要长期保留 ADB 时把它打开。
+App 里的「开机自动恢复」在没有保存过选择时是开启的（`getBoolean("boot", true)`）。关掉它只停止以后开机时的自动尝试，不会撤销已经写入的端口和 USB 配置；卸载也不等于关闭网络 ADB。v1.2.0 另有「关闭 ADB，恢复默认 USB 设置」，只在 U 盘受影响时用。
 
 第三方工具自行评估风险；Aerial 本身不依赖它，它只是这台机器开 ADB 的唯一入口。
 

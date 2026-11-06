@@ -304,8 +304,10 @@ private fun MainPage(vm: HomeViewModel, now: LocalDateTime, takeFocus: Boolean, 
                 focusRequester = first,
                 modifier = Modifier.onFocusChanged { if (it.isFocused) cameFrom = first },
             ) {
-                // TCL lists no inputs to Android; its own input panel is the next best thing.
-                vm.overlay = if (vm.sources.isEmpty() && SystemProbe.openInputPicker(context)) Overlay.None
+                // TCL lists no inputs to Android. XGIMI lists HDMI, but those rows only open its
+                // source page (issue #241), so the button opens that page instead of the list.
+                val vendorPage = vm.sources.isEmpty() || SystemProbe.listedInputsNeedVendorPage(vm.sources)
+                vm.overlay = if (vendorPage && SystemProbe.openInputPicker(context)) Overlay.None
                 else Overlay.ControlCenter(CcPage.Inputs)
             }
             RoundButton(
