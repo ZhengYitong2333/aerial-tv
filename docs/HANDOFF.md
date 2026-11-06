@@ -2,7 +2,7 @@
 
 ## 本地工作区补丁
 
-2026-11-06：本地补丁合并到上游 1.86，版本 `1.86-local.1`（versionCode 118，未推送或发布）。冲突取舍：上游重写过的部分（亮度、#44 HOME 选择框、手机页常驻监听、AerialStream 预取、安装脚本的 `grant`）用上游实现；本地的诊断私有导出、缩略图 LRU、照片解码限制、家长 PIN 覆盖设置 intent、恢复快照保留并接到上游代码上。快照的 app-op 增加 `AUTO_START`、`ASSOC_START`、`ACCESS_RESTRICTED_SETTINGS`，`resolve_home` 带上 `CATEGORY_DEFAULT`（#767）。297 项单测、40 项脚本测试通过，release 构建通过；lint 仍有上游 `VideoWallpaper.kt` 的 6 个 Media3 opt-in 错误。未在真机验证。
+2026-11-06：本地补丁合并到上游 1.86，版本 `1.86-local.1`（versionCode 10000，未推送或发布）。10000 是为了让应用内更新拒绝安装上游的包：安装前按 versionCode 比较，上游下一次至少 119。控制中心的更新提示按版本名比较，`1.86-local.1` 仍显示成 1.86，所以 1.87 发布后提示会出现，点安装会被拒绝。冲突取舍：上游重写过的部分（亮度、#44 HOME 选择框、手机页常驻监听、AerialStream 预取、安装脚本的 `grant`）用上游实现；本地的诊断私有导出、缩略图 LRU、照片解码限制、家长 PIN 覆盖设置 intent、恢复快照保留并接到上游代码上。快照的 app-op 增加 `AUTO_START`、`ASSOC_START`、`ACCESS_RESTRICTED_SETTINGS`，`resolve_home` 带上 `CATEGORY_DEFAULT`（#767）。297 项单测、40 项脚本测试通过，release 构建通过；lint 仍有上游 `VideoWallpaper.kt` 的 6 个 Media3 opt-in 错误。未在真机验证。
 
 第四轮补测：实际 PinPad + HomeViewModel 在测试 Activity 上验证返回、后台保留和配置重建（API23/28）；PhoneCard 在 native renderer 上按 1 倍/2 倍密度渲染并用普通 QR 检测解码（API28）。两个变体各 75 项通过，完整 lint 0 错误、2 既有升级提醒，release 重新归档。未测试完整 MainActivity 联网与主页生命周期。
 
