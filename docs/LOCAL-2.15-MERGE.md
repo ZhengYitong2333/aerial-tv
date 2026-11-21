@@ -1,5 +1,33 @@
 # 本地合并记录：Aerial 2.15
 
+## 审查后修复：2.15-local.2
+
+2026-11-21：完整版本升级为 `2.15-local.2`（versionCode 10002），Lite 保持不变。以下两项是本次代码修复，尚未在真实电视验证：
+
+- 极米显式 HDMI 播放器在输入源列出后消失或被固件拒绝启动时，控制中心也能回退到原生输入源面板。识别同时检查组件与 action，不误处理普通应用，不重复启动被拒绝的播放器；固定输入源磁贴继续保留回退。
+- `cn.formovie.fengos.settings` 纳入设置包识别，系统默认设置指向 AOSP 时，峰米设置磁贴及设置 intent 仍需通过家长 PIN。输入源选择继续不受设置 PIN 阻挡。
+- 新增 5 项回归测试，覆盖上述入口、SecurityException、播放器消失、双重失败提示、普通应用不误回退及解锁后才打开设置。两个变体各 334 项单测通过；两个 release 构建成功；完整 lint 各 0 错误、108 警告、1 提示，与上一版逐项比较无新增。
+- 新产物在 `local/2.15-local.2-artifacts/`：APK、匹配的 API 28 / 31 `.dm`、manifest、签名及测试报告。版本号、权限、HOME 声明和签名已核验，签名与 local.1 一致。上一版归档保留。脚本和 Lite 未改，本轮未重跑它们的测试。
+
+## 最近 issues 核查（2026-11-21）
+
+通过 GitHub API 查看按更新时间排序的最近 60 条记录（56 个 issue、4 个 PR），另按极米 / TCL 检索，并细读 12 个相关 issue 及评论。下面区分社区复测、维护者说明与本地代码判断，不将其他型号结论套用于 Z7X 或 65V8M Pro。
+
+| 反馈 | 核查结论及本地影响 |
+| --- | --- |
+| [#1391 极米 RS Pro 2 冷启动黑屏](https://github.com/pengchujin/aerial-tv/issues/1391) | 2.11 收窄开机窗口事件判断，避免 CellView 阻挡兜底；11 月 20 日维护者依据三轮复测确认修好并关闭。本地已随 2.15 合入。 |
+| [#1383 极米 H3 返回后再次拉首页](https://github.com/pengchujin/aerial-tv/issues/1383) | 仍开放；2.13 增加守护自身诊断输出，等待现场日志，不是已确认修复。 |
+| [#1377 极米 H3S HOME 记录失效](https://github.com/pengchujin/aerial-tv/issues/1377) | 因十多天没有新反馈而关闭，不能将关闭状态当作修复证明。 |
+| [#1483 RS20 Pro Max HDMI](https://github.com/pengchujin/aerial-tv/issues/1483) | 用户确认 1.99 两个 HDMI 一次直达；HDMI 作为壁纸无画面则被归为固件只向自家播放器供帧。该证据不证明旧 Z7X 也能直切或显示 HDMI 壁纸。 |
+| [#1676 TCL 85Q10K 没有亮度滑块](https://github.com/pengchujin/aerial-tv/issues/1676) | 维护者说明第三方无法控制该平台背光，使用 TCL 原生图像面板；关闭原因是固件限制。不能据此判断 65V8M Pro 的具体固件行为。 |
+| [#371 TCL 待机后唤不醒](https://github.com/pengchujin/aerial-tv/issues/371) | tc8000_ay30a2 用户确认 1.62 在 AerialDream 真正播放后入睡也能唤醒；后续仍有同款用户黑屏报告，不能宣称 TCL 全系解决。 |
+| [#1694 航拍总是重复少数片段](https://github.com/pengchujin/aerial-tv/issues/1694) | 新开放建议，无维护者回复。本地 AerialSet.MAX 仍为 3，用户要求缓存数量及续播策略可调，当前未实现。 |
+| [#1690 输入源磁贴使用图标库](https://github.com/pengchujin/aerial-tv/issues/1690) | 新开放建议；本地手机页仍用 `!a.source` 排除信号源，当前只可走已有自定义图标路径。 |
+| [#1689 更新后抢回首页](https://github.com/pengchujin/aerial-tv/issues/1689) | 新开放问题，无维护者回复。源码核对：HomeGuardService 的更新分支延迟回调只检查 `!aerialResumed` 就执行 goHome，没有核对是否已有其他应用在前台。对应路径仍在本地，应作为后续独立修复；本轮没有修改，也未在真机复现。 |
+| [#1668](https://github.com/pengchujin/aerial-tv/issues/1668) / [#1661 峰米光机不亮](https://github.com/pengchujin/aerial-tv/issues/1661) | 2.13 / 2.14 隐藏相关机型的亮度控制并避免写通用亮度值，本地已合入；有用户报告恢复，Q1 Pro 的 2.14 发布回复仍请求复测。该问题与本轮修复的设置 PIN 是两回事。 |
+
+以下为 local.1 合并时的记录。
+
 日期：2026-11-21。将上游 [v2.15](https://github.com/pengchujin/aerial-tv/releases/tag/v2.15)（`c9a84b1`）合入本地 main，完整版本为 `2.15-local.1`，versionCode 10001；guard 带 `-guard` 后缀。Lite 为 `1.38-local.1`，versionCode 41。未推送、发布或安装到电视。
 
 合并前版本是 `1.86-local.1`（`d152094`），回退参考分支 `backup/pre-2.15-20261121`。不将上游文档中的其他设备实测记录视为本次对 Z7X / 65V8M Pro 的验证。

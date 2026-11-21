@@ -224,7 +224,7 @@ object SystemProbe {
         pkg in SETTINGS_PACKAGES ||
             context.packageManager.resolveActivity(Intent(Settings.ACTION_SETTINGS), 0)?.activityInfo?.packageName == pkg
 
-    private val SETTINGS_PACKAGES = setOf("com.android.settings", "com.android.tv.settings", "com.android.newsettings", "com.xiaomi.mitv.settings", "com.tcl.settings", "com.helios.setting", "com.haier.tv.menusetting", SKYWORTH_DIGITAL_SETTINGS, BAOFENG_SETTINGS, ChanghongSettings.PACKAGE)
+    private val SETTINGS_PACKAGES = setOf("com.android.settings", "com.android.tv.settings", "com.android.newsettings", "com.xiaomi.mitv.settings", "com.tcl.settings", "com.helios.setting", "com.haier.tv.menusetting", "cn.formovie.fengos.settings", SKYWORTH_DIGITAL_SETTINGS, BAOFENG_SETTINGS, ChanghongSettings.PACKAGE)
 
     /**
      * Skyworth Digital's settings, the settings app of the boxes it builds: Tencent Aurora Box 7
@@ -749,7 +749,12 @@ object SystemProbe {
      * TCL settings' otherwise (TclShortCutKeyManager.startTVInputService).
      */
     private val XGIMI_PLAYER = ComponentName("com.xgimi.xhplayer", "com.xgimi.xhplayer.InputActivity")
+    private const val XGIMI_HDMI_ACTION = "com.xgimi.action.hdmiPlayer"
     private val XGIMI_HDMI_INPUT = Regex("""^com\.xgimi\.tvinput/\.inputservice\.Hdmi(\d)TvInputService/HW\d+$""")
+
+    /** Still an input if its explicit player stops being launchable after the ports were listed. */
+    internal fun isXgimiInputIntent(intent: Intent): Boolean =
+        intent.component == XGIMI_PLAYER && intent.action == XGIMI_HDMI_ACTION
 
     /**
      * XGIMI GMUI on Android 14 (RS20 Pro Max, DOHKO): the passthrough intent of an HDMI input has
@@ -770,7 +775,7 @@ object SystemProbe {
         val port = XGIMI_HDMI_INPUT.matchEntire(id)?.groupValues?.get(1) ?: return null
         val info = runCatching { context.packageManager.getActivityInfo(XGIMI_PLAYER, 0) }.getOrNull() ?: return null
         if (!info.exported || !info.enabled || !info.applicationInfo.enabled || info.permission != null) return null
-        return Intent("com.xgimi.action.hdmiPlayer").setComponent(XGIMI_PLAYER)
+        return Intent(XGIMI_HDMI_ACTION).setComponent(XGIMI_PLAYER)
             .putExtra("sw", "HDMI$port").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
 

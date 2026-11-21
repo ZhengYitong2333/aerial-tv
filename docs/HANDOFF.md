@@ -2,6 +2,8 @@
 
 ## 本地工作区补丁
 
+审查后修复：`2.15-local.2`（10002）。补齐极米显式 HDMI 播放器启动失败的输入源回退，以及峰米设置包的家长 PIN 识别。两个变体各 334 项单测通过，release 构建成功，lint 各 0 错误、108 警告、1 提示，无新增。产物 `local/2.15-local.2-artifacts/`；Lite 和脚本不变，本轮未重跑。已核查近期 issues：#1689 更新后抢回首页的代码路径仍存在，留作独立修复；#1391 已有社区复测确认，#1383 仍待日志。详见 [合并及审查记录](LOCAL-2.15-MERGE.md)。未推送、安装或实机验证。
+
 2026-11-21：合并上游 v2.15（`c9a84b1`），完整版本 `2.15-local.1`（10001），Lite `1.38-local.1`（41）。保留私有诊断、PIN、缓存/照片限制及恢复快照；修正新极米直切 HDMI 与旧输入源面板的优先级，补齐 Lite 共享 VendorAccess。standard / guard 各 329 项、Lite 7 项单测，以及 82 项离线脚本测试通过；三个 release 构建成功。完整 lint 各 0 错误、108 警告、1 提示；Lite 0 错误、147 警告。回退分支 `backup/pre-2.15-20261121`；产物在 `local/2.15-local.1-artifacts/`。未推送、发布或实机验证。详见 [本地合并记录](LOCAL-2.15-MERGE.md)。以下为历史记录。
 
 2026-11-06：本地补丁合并到上游 1.86，版本 `1.86-local.1`（versionCode 10000，未推送或发布）。10000 是为了让应用内更新拒绝安装上游的包：安装前按 versionCode 比较，上游下一次至少 119。控制中心的更新提示按版本名比较，`1.86-local.1` 仍显示成 1.86，所以 1.87 发布后提示会出现，点安装会被拒绝。冲突取舍：上游重写过的部分（亮度、#44 HOME 选择框、手机页常驻监听、AerialStream 预取、安装脚本的 `grant`）用上游实现；本地的诊断私有导出、缩略图 LRU、照片解码限制、家长 PIN 覆盖设置 intent、恢复快照保留并接到上游代码上。快照的 app-op 增加 `AUTO_START`、`ASSOC_START`、`ACCESS_RESTRICTED_SETTINGS`，`resolve_home` 带上 `CATEGORY_DEFAULT`（#767）。297 项单测、40 项脚本测试通过，release 构建通过；lint 仍有上游 `VideoWallpaper.kt` 的 6 个 Media3 opt-in 错误。未在真机验证。
