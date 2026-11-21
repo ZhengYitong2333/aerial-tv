@@ -350,9 +350,10 @@ OUT=$(install_apk "$APK") || RC=$?
 if [ "$RC" -ne 0 ] || ! printf '%s\n' "$OUT" | grep -q Success; then
   echo "$OUT" >&2
   case "$OUT" in
-    *VERIFICATION_FAILURE*)
+    *VERIFICATION_FAILURE*|*"install apk has be disabled from pm"*)
       # TCL: ADB installs are refused outright, and so is any APK that declares a home screen and is
-      # not signed by TCL. The guard build declares none.
+      # not signed by TCL. The guard build declares none. TCL's Android 5.1 firmware (AOSP on p34a5,
+      # Amlogic T960, issue #1424) says it with its own text and no Failure code.
       [ "$FLAVOR" = guard ] || APK=$(build guard)
       WANT=$(version_code "$APK")
       echo
@@ -451,13 +452,19 @@ adb shell cmd package compile -m speed -f "$PKG" >/dev/null 2>&1 || true
 
 if [ "$FLAVOR" = standard ]; then
   # Hisense VIDAA (MT9653, Android 11, #40) starts the launcher named in this property by explicit
-  # component, past the HOME role and unseen by Home Guard. Only firmwares that have it; the old
-  # value is kept on the TV for restore.sh.
+  # component, past the HOME role and unseen by Home Guard. Firmwares that have it set; and where
+  # it is empty but 聚好看 (com.jamdeo.tv.vod) is the launcher: VIDAA_TV MT9603 (Android 11, #1679)
+  # left it empty, opened 聚好看 by explicit component on Home all the same, has no key filter for
+  # the guard, and took the property (Home straight to Aerial, kept over a reboot). The old value
+  # is kept on the TV for restore.sh, "-" for empty.
   VT_HOME=$(adb shell getprop persist.vt.use_home_pkg | tr -d '\r')
+  if [ -z "$VT_HOME" ] && adb shell pm path com.jamdeo.tv.vod 2>/dev/null | grep -q package:; then
+    VT_HOME=-
+  fi
   if [ -n "$VT_HOME" ] && [ "$VT_HOME" != "$PKG" ]; then
     adb shell settings put global aerial_vt_home_pkg "$VT_HOME"
     adb shell setprop persist.vt.use_home_pkg "$PKG"
-    echo "Hisense: Home now opens Aerial instead of $VT_HOME."
+    echo "Hisense: Home now opens Aerial instead of ${VT_HOME/#-/com.jamdeo.tv.vod}."
   fi
   # Not on Xiaomi (PatchWall, com.mitv.tvhome installed): most firmwares ignore it, but one Android 9
   # set took it, PatchWall then ran as an ordinary app outside the home stack, and Xiaomi's short

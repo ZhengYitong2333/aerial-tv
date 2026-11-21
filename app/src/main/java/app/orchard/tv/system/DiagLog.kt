@@ -65,8 +65,22 @@ object DiagLog {
     fun init(context: Context) {
         if (file != null || !enabled(context)) return
         val dir = File(context.filesDir, "diagnostics").apply { mkdirs() }
-        file = File(dir, "aerial-diag.log")
-        i("log file ${file?.absolutePath}")
+        val f = File(dir, "aerial-diag.log")
+        // The lines from before the file: a boot's while the user was still locked, when the
+        // preference saying the file is wanted cannot be read yet. XGIMI RS Pro 2 (Android 9) stayed
+        // black at boot, logcat cannot be read there, and the file began at the rescue (issue #1391).
+        file = f
+        val earlier = synchronized(lines) { lines.toList() }
+        if (earlier.isNotEmpty()) {
+            writer.execute {
+                runCatching {
+                    if (file != f) return@execute
+                    if (f.length() > FILE_LIMIT) f.renameTo(File(f.parentFile, "aerial-diag.old.log"))
+                    f.appendText(earlier.joinToString("\n", prefix = "-- earlier in this process:\n", postfix = "\n"))
+                }
+            }
+        }
+        i("log file ${f.absolutePath}")
     }
 
     fun i(message: String) {

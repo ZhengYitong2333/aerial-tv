@@ -18,6 +18,24 @@ import org.robolectric.util.ReflectionHelpers
 @Config(sdk = [28])
 class ResourceLifecycleTest {
     @Test
+    fun enablingDiagnosticsKeepsEarlyBootLinesInPrivateStorage() {
+        val app = RuntimeEnvironment.getApplication()
+        DiagLog.setEnabled(app, false)
+        DiagLog.i("early-boot-merge-regression")
+        try {
+            DiagLog.setEnabled(app, true)
+            val writer = ReflectionHelpers.getField<Lazy<DiagnosticWriter>>(DiagLog, "writer\$delegate").value
+            writer.submit {}.get(5, java.util.concurrent.TimeUnit.SECONDS)
+            val log = java.io.File(app.filesDir, "diagnostics/aerial-diag.log")
+            assertTrue(log.readText().contains("early-boot-merge-regression"))
+            assertTrue(log.readText().contains("-- earlier in this process:"))
+            assertTrue(!java.io.File(app.getExternalFilesDir(null), "aerial-diag.log").exists())
+        } finally {
+            DiagLog.setEnabled(app, false)
+        }
+    }
+
+    @Test
     fun logRingIsBoundedByCharactersAsWellAsNumberOfLines() {
         val message = "x".repeat(10_000)
         repeat(100) { DiagLog.i(message) }

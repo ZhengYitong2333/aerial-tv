@@ -310,6 +310,51 @@ class XgimiSettingsTest {
         ReflectionHelpers.setField(this, "mLabel", "HDMI 1")
     }
 
+    @Test
+    @Config(sdk = [34])
+    fun newGmuiHdmiSwitchTakesPriorityOverTheLegacyPicker() {
+        pm.addServiceIfNotPresent(service).apply {
+            exported = true
+            enabled = true
+            applicationInfo.enabled = true
+        }
+        pm.addIntentFilterForService(service, android.content.IntentFilter("com.xgimi.settings.SETTINGS"))
+        assertTrue(SystemProbe.hasXgimiSettings(context))
+        val player = ComponentName("com.xgimi.xhplayer", "com.xgimi.xhplayer.InputActivity")
+        pm.addActivityIfNotPresent(player).apply {
+            exported = true
+            enabled = true
+            applicationInfo.enabled = true
+        }
+        val input = hdmi().apply {
+            ReflectionHelpers.setField(this, "mId", "com.xgimi.tvinput/.inputservice.Hdmi2TvInputService/HW6")
+        }
+        InputManagerShadow.inputs = listOf(input)
+        val source = SystemProbe.inputsToCheck(context).single()
+        assertEquals(player, source.intent.component)
+        assertEquals("HDMI2", source.intent.getStringExtra("sw"))
+        assertFalse(SystemProbe.listedInputsNeedVendorPage(listOf(source)))
+    }
+
+    @Test
+    @Config(sdk = [34])
+    fun unavailableNewGmuiPlayerFallsBackToTheLegacyPicker() {
+        pm.addServiceIfNotPresent(service).apply {
+            exported = true
+            enabled = true
+            applicationInfo.enabled = true
+        }
+        pm.addIntentFilterForService(service, android.content.IntentFilter("com.xgimi.settings.SETTINGS"))
+        assertTrue(SystemProbe.hasXgimiSettings(context))
+        val player = ComponentName("com.xgimi.xhplayer", "com.xgimi.xhplayer.InputActivity")
+        pm.addActivityIfNotPresent(player).apply { exported = true; enabled = false }
+        val input = hdmi().apply {
+            ReflectionHelpers.setField(this, "mId", "com.xgimi.tvinput/.inputservice.Hdmi2TvInputService/HW6")
+        }
+        InputManagerShadow.inputs = listOf(input)
+        assertService(SystemProbe.inputsToCheck(context).single().intent, "Settings://com.xgimi.settings.signalSource/hdmi_misckey")
+    }
+
     private fun open(activity: MainActivity, intent: Intent) {
         MainActivity::class.java.getDeclaredMethod("open", Intent::class.java).apply {
             isAccessible = true

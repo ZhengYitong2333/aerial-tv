@@ -54,6 +54,7 @@ printf '%s\\n' "$*" >> "$CALL_LOG"
 case "$*" in
   connect*) echo connected ;;
   get-state) echo device ;;
+  'shell settings get global aerial_restore_v2_complete') echo 1 ;; # Existing snapshot on upgrade.
   'shell getprop ro.build.version.sdk') echo "$SDK" ;;
   'shell dumpsys package app.orchard.tv') echo versionCode=1 ;;
   install*)

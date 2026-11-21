@@ -15,6 +15,7 @@ class BuildFailureTest(unittest.TestCase):
             (root/'tools').mkdir()
             script = root/'tools/install.sh'
             script.write_bytes(SCRIPT.read_bytes())
+            (root/'tools/restore-state.sh').write_bytes(SCRIPT.with_name('restore-state.sh').read_bytes())
             apk = ('lite/build/outputs/apk/release/lite-release.apk' if flavor == 'lite' else
                    'app/build/outputs/apk/{0}/release/app-{0}-release.apk'.format(flavor))
             artifact = root/apk
@@ -31,6 +32,7 @@ printf 'adb %s\\n' "$*" >> "$LOG"
 case "$*" in
   connect*) echo connected ;;
   get-state) echo device ;;
+  'shell settings get global aerial_restore_v2_complete') echo 1 ;; # Existing snapshot on upgrade.
   'shell getprop ro.build.version.sdk') echo "$SDK" ;;
   'shell dumpsys package app.orchard.tv') echo versionCode=1 ;;
   install*)

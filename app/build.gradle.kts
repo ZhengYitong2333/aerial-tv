@@ -19,11 +19,9 @@ android {
         // Android 5.0. Compose 1.10 and later need 6.0, so the Compose BOM below stays on 1.9.
         minSdk = 21
         targetSdk = 34
-        // Local build. Upstream 1.86 is 118 and the next release is at least 119, about 2 per
-        // release lately, so 10000 stays ahead: an in-app update whose APK is older is refused
-        // (Updates.Failure.NotNewer). The update notice itself compares the version name.
-        versionCode = 10000
-        versionName = "1.86-local.1"
+        // Keep local builds ahead of upstream APKs so in-app updates cannot discard local patches.
+        versionCode = 10001
+        versionName = "2.15-local.1"
         // `./gradlew -Pdiag ...`: a build for one reporter's TV whose logcat shows no app lines;
         // see system/DiagLog.kt.
         val diag = project.hasProperty("diag")
@@ -87,6 +85,8 @@ android {
     }
     testOptions {
         unitTests.isIncludeAndroidResources = true
+        // Robolectric now loads hundreds of tests plus native/Java bitmap fixtures per variant.
+        unitTests.all { it.maxHeapSize = "1g" }
     }
     lint {
         lintConfig = file("lint.xml")

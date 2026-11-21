@@ -49,7 +49,14 @@ data class Wallpaper(
 
 /** System: none of Aerial's; the TV's own screensaver starts as the firmware has it (SystemScreensaver). */
 enum class ScreensaverMode(val key: String) {
-    Aerial("aerial"), Photos("photos"), Clock("clock"), Videos("videos"), System("system");
+    Aerial("aerial"), Photos("photos"), Clock("clock"), Videos("videos"), System("system"),
+
+    /**
+     * No screensaver: when the time comes the TV goes to sleep, through the guard
+     * (HomeGuardService.sleep, issue #1436). Offered only where the guard can; where it cannot
+     * when the time comes, the clock shows instead.
+     */
+    Sleep("sleep");
 
     companion object {
         fun of(key: String?) = entries.firstOrNull { it.key == key } ?: Aerial
@@ -188,7 +195,12 @@ object Wallpapers {
     private var backdropJob: Job? = null
     private var started = false
 
-    /** The UI's size in pixels. Pictures are decoded to it: 1080p on most TVs, 4K where the UI is. */
+    /**
+     * The UI's size in pixels. Pictures are decoded to it: 1080p on most TVs, 4K where the UI is.
+     * Portrait where the window is: a monitor stood on end, its box turned to portrait, gives Aerial
+     * a 1080×1920 window though it asks for landscape, and a 16:9 picture drawn into it was
+     * stretched to three times its height (HK1RBOX-X50, Android 14, #1416 #1255).
+     */
     var screenW = 1920; private set
     var screenH = 1080; private set
 
@@ -196,12 +208,7 @@ object Wallpapers {
         if (started) return
         started = true
         app = context.applicationContext as android.app.Application
-        // Home drawn at the panel's size (UhdCanvas) gets pictures of that size.
-        val scale = UhdCanvas.scale(context)
-        context.resources.displayMetrics.let {
-            screenW = (maxOf(it.widthPixels, it.heightPixels) * scale).roundToInt()
-            screenH = (minOf(it.widthPixels, it.heightPixels) * scale).roundToInt()
-        }
+        measure(context).let { (w, h) -> screenW = w; screenH = h }
         selectedId = (prefs.getString("selected", LATEST_DAILY) ?: LATEST_DAILY)
             // A built-in wallpaper from before the Mac-style set: its nearest one now.
             .let { if (it.startsWith("grad:")) "grad:" + Gradients.currentKey(it.removePrefix("grad:")) else it }
@@ -218,6 +225,28 @@ object Wallpapers {
         scope.launch(Dispatchers.IO) { clearStaleUploads() }
         // Installs from before 1.42 have a baked picture but no copy yet.
         scope.launch(Dispatchers.IO) { keepForLockedBoot() }
+    }
+
+    /** [context]'s window in pixels, times the panel's scale where Home is drawn at 4K (UhdCanvas). */
+    private fun measure(context: Context): Pair<Int, Int> {
+        val scale = UhdCanvas.scale(context)
+        val m = context.resources.displayMetrics
+        return (m.widthPixels * scale).roundToInt() to (m.heightPixels * scale).roundToInt()
+    }
+
+    /**
+     * Pictures sized for [context]'s window, which is Home's or the screensaver's: [init] may have
+     * come from a receiver first, and the box may be turned while Aerial runs. A new size bakes
+     * the backdrop again (its key has the size in it).
+     */
+    fun fitScreen(context: Context) {
+        if (!started) return
+        val (w, h) = measure(context)
+        if (w <= 0 || h <= 0 || (w == screenW && h == screenH)) return
+        DiagLog.i("wallpaper size ${screenW}x$screenH -> ${w}x$h")
+        screenW = w
+        screenH = h
+        rebuildBackdrop()
     }
 
     /**
@@ -267,21 +296,33 @@ object Wallpapers {
     fun resolve(id: String = selectedId): Wallpaper? = when (id) {
         LATEST_DAILY -> items.firstOrNull { it.kind == WallpaperKind.Daily }
         ROTATE_PHOTOS -> items.filter { it.kind == WallpaperKind.Photo }.sortedBy { it.id }.let { photos ->
-            if (photos.isEmpty()) resolve(LATEST_DAILY) else photos[Math.floorMod(today(), photos.size)]
+            if (photos.isEmpty()) resolve(LATEST_DAILY) else photos[Math.floorMod(photoSlot(), photos.size)]
         }
         // Inputs are listed after Home starts; until then the input is taken on trust.
         else -> items.firstOrNull { it.id == id }
             ?: if (isSource(id)) Wallpaper(id, WallpaperKind.Source, id.substringAfterLast('/')) else null
     }
 
-    private fun today(): Long = java.time.LocalDate.now().toEpochDay()
+    /**
+     * Which turn "My Photos, in turn" is on: the day, or with a shorter interval chosen
+     * (AerialSettings.photoMinutes, #1314), the count of such intervals in local time.
+     */
+    private fun photoSlot(): Long {
+        val minutes = AerialSettings.photoMinutes
+        if (minutes >= AerialSettings.DAY_MINUTES) return java.time.LocalDate.now().toEpochDay()
+        val now = System.currentTimeMillis()
+        return (now + java.util.TimeZone.getDefault().getOffset(now)) / 60_000L / minutes
+    }
 
-    /** The day the rotating photo was last picked for; a new day picks the next one. */
-    private var rotatedOn = 0L
+    /** The turn the rotating photo was last picked for; a new one picks the next photo. */
+    private var rotatedOn = Long.MIN_VALUE
 
-    /** Moves "My Photos, rotating" on to today's photo; Aerial calls it whenever Home comes back. */
+    /**
+     * Moves "My Photos, in turn" on to the photo for now; Aerial calls it whenever Home comes back,
+     * and each minute while Home is in front.
+     */
     fun rotateIfDue() {
-        if (!started || selectedId != ROTATE_PHOTOS || rotatedOn == today()) return
+        if (!started || selectedId != ROTATE_PHOTOS || rotatedOn == photoSlot()) return
         rebuildBackdrop()
     }
 
@@ -292,6 +333,14 @@ object Wallpapers {
         WallpaperKind.Photo -> File(photoDir, w.id.removePrefix("photo:") + ".jpg")
         else -> null
     }
+
+    /**
+     * For the photo screensaver: a portrait photo of the owner's whole, on a blurred copy of itself
+     * (Images.decodeWhole, issue #647); anything else as [picture]. Call off the main thread.
+     */
+    fun saverPicture(wp: Wallpaper, w: Int, h: Int): Bitmap? =
+        if (wp.kind == WallpaperKind.Photo) fileFor(wp)?.takeIf { it.exists() }?.let { Images.decodeWhole(it, w, h) }
+        else picture(wp, w, h)
 
     /** Full picture at [w]×[h] without shading, for the photo screensaver. Call off the main thread. */
     fun picture(wp: Wallpaper, w: Int, h: Int): Bitmap? = when (wp.kind) {
@@ -336,7 +385,7 @@ object Wallpapers {
         val film = videoFilms(id).firstOrNull() ?: return null
         val poster = posterOf(film)
         if (w <= POSTER_W && poster.exists()) Images.decodeCover(poster, w, h)?.let { return it }
-        if (filmGlassless || fileFramesJam(app)) return null
+        if (filmGlassless || fileFramesJam(app)) return keyFrameInApp(film, w, h)
         val mmr = android.media.MediaMetadataRetriever()
         return try {
             mmr.setDataSource(film.file.path)
@@ -347,6 +396,30 @@ object Wallpapers {
             DiagLog.i("video poster: ${film.id} not read (${e.javaClass.simpleName})")
             null
         } finally { runCatching { mmr.release() } }
+    }
+
+    /** Films whose key frame could not be read in this process, not tried again until a restart. */
+    private val keyFrameFailed = java.util.Collections.synchronizedSet(HashSet<String>())
+
+    /**
+     * Where the media server's retriever is not used: the film's first key frame read and decoded
+     * in this process (FilmKeyFrame), kept as the poster. Without it Home's picture under a video
+     * wallpaper stayed the first built-in gradient on TCL MT5879, the retriever shut out by TCL's
+     * extractor (issue #1622, TCL 75Q9K). Once per film; a failure is remembered until a restart.
+     */
+    private fun keyFrameInApp(film: ScreensaverVideo, w: Int, h: Int): Bitmap? {
+        if (film.id in keyFrameFailed) return null
+        return runCatching {
+            val frame = kotlinx.coroutines.runBlocking {
+                AerialStream.keyFrameOfFile(film.file, "poster:${film.id}", 0, maxOf(w, POSTER_W), maxOf(h, POSTER_H))
+            }
+            DiagLog.i("video poster: ${film.id} read in the app (${frame.codec}, ${frame.readMs + frame.decodeMs + frame.convertMs} ms)")
+            keepPoster(film, frame.bitmap)
+            Images.cover(frame.bitmap, w, h)
+        }.onFailure {
+            keyFrameFailed += film.id
+            DiagLog.i("video poster: ${film.id} not read in the app (${it.javaClass.simpleName} ${it.message.orEmpty().take(60)})")
+        }.getOrNull()
     }
 
     /** Drops the thumbnails (about 330 KB each); the picker makes them again when it opens. */
@@ -377,7 +450,7 @@ object Wallpapers {
                 frosted = null
                 return@launch
             }
-            rotatedOn = today()
+            rotatedOn = photoSlot()
             val wp = resolve(id) ?: resolve(DEFAULT_FALLBACK)
             val key = wp?.let(::bakedKey)
             if (key != null && key == bakedKey && backdrop != null) return@launch
@@ -495,25 +568,32 @@ object Wallpapers {
         withContext(Dispatchers.Default) { PreparedFrame(frame, Images.frost(frame)) }
 
     /**
-     * [prepared] becomes the aerial wallpaper's picture at once, as film [film] at [atMs]; its file
+     * [prepared] becomes the moving wallpaper's picture at once, as film [film] at [atMs]; its file
      * and the baked Home are written after, apart, so Home coming back on it does not wait for them
-     * (the screensaver's pictures, LiveWallpaper.SaverFrames).
+     * (the screensaver's pictures: LiveWallpaper.SaverFrames for the aerials, VideoSaverFrames for
+     * the owner's videos). Not a film the wallpaper does not play (another video than the one chosen).
      */
     fun applyLiveFrame(prepared: PreparedFrame, film: String, atMs: Long): Boolean {
         val id = selectedId
-        if (!moves() || isVideo(id)) return false
+        if (!moves()) return false
+        val video = isVideo(id)
+        if (id.startsWith(VIDEO_PREFIX) && film != id.removePrefix(VIDEO_PREFIX)) return false
         backdropJob?.cancel()
-        leftHere = null
-        prefs.edit { putString("live_film", film).putLong("live_at", atMs).remove("live_left_film").remove("live_left_at") }
-        synchronized(thumbs) { thumbs.remove(id) }
+        if (video) videoLeftHere = null else leftHere = null
+        val key = if (video) "video" else "live"
+        prefs.edit { putString("${key}_film", film).putLong("${key}_at", atMs).remove("${key}_left_film").remove("${key}_left_at") }
+        // The frame is both the film's own card and the card that plays them all in turn (useLiveFrame).
+        synchronized(thumbs) { thumbs.remove(id); if (video) { thumbs.remove(VIDEOS); thumbs.remove(VIDEO_PREFIX + film) } }
         backdrop = prepared.frame.asImageBitmap()
         frosted = prepared.frost.asImageBitmap()
         pictureVersion++
+        val target = if (video) videoFrame else liveFrame
         scope.launch(Dispatchers.IO) {
-            val part = File(liveFrame.path + ".part")
+            val part = File(target.path + ".part")
             runCatching { part.outputStream().use { prepared.frame.compress(Bitmap.CompressFormat.JPEG, 90, it) } }
                 .onFailure { Log.w(TAG, "could not keep the film's frame", it) }
-            if (part.exists() && !part.renameTo(liveFrame)) part.delete()
+            if (part.exists() && !part.renameTo(target)) part.delete()
+            if (video) videoFilms(VIDEOS).firstOrNull { it.id == film }?.let { keepPoster(it, prepared.frame) }
             if (selectedId == id) resolve(id)?.let { saveBaked(bakedKey(it), prepared.frame, prepared.frost) }
         }
         return true
@@ -540,7 +620,7 @@ object Wallpapers {
         }
         backdropJob?.cancel()
         if (part.exists() && !part.renameTo(target)) part.delete()
-        if (!isVideo(id)) leftHere = null
+        if (isVideo(id)) videoLeftHere = null else leftHere = null
         prefs.edit { putString("${key}_film", film).putLong("${key}_at", atMs).remove("${key}_left_film").remove("${key}_left_at") }
         // The film's own card keeps a picture when another film is chosen.
         if (isVideo(id)) withContext(Dispatchers.IO) { videoFilms(VIDEOS).firstOrNull { it.id == film }?.let { keepPoster(it, frame) } }
@@ -609,6 +689,18 @@ object Wallpapers {
             prefs.edit { putString("live_left_film", film).putLong("live_left_at", atMs) }
         }
     }
+
+    /**
+     * Where the owner's video wallpaper was let go (into an app, or a screensaver of its own), held
+     * in memory until a frame of it, or a later one, is the picture: a screensaver of their videos
+     * starts from here (HomeVideo.start), as the picture behind the app may still be on its way.
+     */
+    @Volatile
+    private var videoLeftHere: Pair<String, Long>? = null
+
+    fun leaveVideo(film: String, atMs: Long) { videoLeftHere = film to atMs }
+
+    fun videoLeftSpot(): Pair<String, Long>? = videoLeftHere
 
     /** The same for the owner's videos: which one and where it last stopped. */
     fun videoSpot(): Pair<String, Long>? {
@@ -775,12 +867,19 @@ object Wallpapers {
         if (due) scope.launch { refreshDaily() }
     }
 
-    /** Bing's dates are China's, as yyyyMMdd. */
-    private fun hasTodaysDaily(): Boolean {
-        val today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Shanghai"))
-            .format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE)
-        return readDailyIndex().any { it.first >= today }
-    }
+    /**
+     * Whether the newest photo on hand is still the current one. Bing's `startdate` is not the day
+     * the photo is shown in China: the one up from 00:00 on the 20th (China time) is dated the 19th,
+     * its `fullstartdate` 202611191600 being UTC (checked against cn.bing.com 2026-11-20). Compared
+     * with China's date, today's photo never seemed to be there: the half-hourly retry ran all day,
+     * and a Home coming back after midnight within half an hour of one did not look again, so the
+     * new photo waited for the next round (Sony BRAVIA 2015, Android 7, issue #1630). The next photo
+     * is due a day after the newest one's start; an index from before has no start and is fetched.
+     */
+    private fun hasTodaysDaily(): Boolean = runCatching {
+        val arr = JSONArray(File(dailyDir, "index.json").readText())
+        dailyIsCurrent((0 until arr.length()).map { arr.getJSONObject(it).optString("start") }, System.currentTimeMillis())
+    }.getOrDefault(false)
 
     private var dailyRetry: Job? = null
 
@@ -816,14 +915,18 @@ object Wallpapers {
                     val date = img.getString("startdate")
                     val file = File(dailyDir, "$date.jpg")
                     if (!file.exists()) {
-                        // url is the 1920×1080 picture; a UI drawn above 1080p gets the UHD one.
-                        val path = if (screenW > 1920) img.getString("urlbase") + "_UHD.jpg" else img.getString("url")
+                        // url is the 1920×1080 picture; a UI drawn above 1080p gets the UHD one, and
+                        // so does a portrait one, which shows only its middle, 1080 px tall in the small one.
+                        val path = if (screenW > 1920 || screenH > 1080) img.getString("urlbase") + "_UHD.jpg" else img.getString("url")
                         val bytes = get("https://cn.bing.com" + path)
                         file.writeBytes(bytes)
                     }
                     val copyright = img.optString("copyright")
                     val title = img.optString("title").ifBlank { copyright.substringBefore(" (").ifBlank { date } }
-                    index.put(JSONObject().put("date", date).put("title", title).put("caption", copyright))
+                    index.put(
+                        JSONObject().put("date", date).put("title", title).put("caption", copyright)
+                            .put("start", img.optString("fullstartdate")),
+                    )
                 }
                 File(dailyDir, "index.json").writeText(index.toString())
                 // Keep only what Bing still lists.
