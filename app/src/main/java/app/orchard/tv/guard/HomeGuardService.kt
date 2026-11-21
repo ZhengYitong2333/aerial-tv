@@ -88,6 +88,7 @@ class HomeGuardService : AccessibilityService() {
 
     /** The last window that came to the front, as package to class; null until one does. */
     private var lastWindow: Pair<String, String>? = null
+    private var lastActivityWindowSequence = -1L
 
     private val handler = Handler(Looper.getMainLooper())
 
@@ -1088,8 +1089,8 @@ class HomeGuardService : AccessibilityService() {
         if (justUpdated() && getSystemService<PowerManager>()?.isInteractive == true &&
             GuardSetup.installerJustClosed(this)
         ) {
-            DiagLog.i("guard: bound again after Aerial's own update; bringing Aerial back over the installer")
-            handler.postDelayed({ if (!aerialResumed) goHome() }, AFTER_UPDATE_MS)
+            val windowsAtSchedule = windowsSeen
+            handler.postDelayed({ recoverAfterUpdate(windowsAtSchedule) }, AFTER_UPDATE_MS)
         }
         // Bound a little after boot, or brought back after the firmware killed Aerial: either way
         // the stock launcher is what's in front, and the window change that showed it is long gone.
@@ -1224,6 +1225,19 @@ class HomeGuardService : AccessibilityService() {
         pkg in FIRMWARE_BOOT_APPS && SystemClock.elapsedRealtime() < BOOT_WINDOW_MS && !keySeen
 
     private var keySeen = false
+
+    /** A recent installer marker is not evidence that the installer is still in front. */
+    private fun recoverAfterUpdate(windowsAtSchedule: Long) {
+        val front = if (lastActivityWindowSequence > windowsAtSchedule) lastWindow?.first else frontByUsage()?.first
+        val interactive = !screenOff && getSystemService<PowerManager>()?.isInteractive == true
+        val restore = UpdateRecovery.shouldRestore(
+            interactive, GuardSetup.isUserUnlocked(this), aerialResumed, front,
+            front in stockHomes, SystemClock.uptimeMillis() < allowStockUntil,
+            front?.let { UpdateRecovery.isSystemInstaller(this, it) } == true,
+        )
+        DiagLog.i("guard: after update front=$front interactive=$interactive restore=$restore")
+        if (restore) goHome()
+    }
 
     private fun justUpdated(): Boolean = runCatching {
         System.currentTimeMillis() - packageManager.getPackageInfo(packageName, 0).lastUpdateTime < 2 * 60_000
@@ -1985,6 +1999,7 @@ class HomeGuardService : AccessibilityService() {
         val before = lastWindow?.first
         if (isActivity(pkg, cls)) {
             lastWindow = pkg to cls
+            lastActivityWindowSequence = windowsSeen
             if (!CecHome.active(this, pkg)) {
                 lastCecHomeUp = Long.MIN_VALUE / 2
                 handler.removeCallbacks(cecHomeHold)

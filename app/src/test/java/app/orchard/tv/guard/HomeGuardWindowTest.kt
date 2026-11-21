@@ -9,6 +9,7 @@ import android.content.pm.ResolveInfo
 import android.os.PowerManager
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -29,6 +30,32 @@ import org.robolectric.util.ReflectionHelpers
 class HomeGuardWindowTest {
     private val context: Context = RuntimeEnvironment.getApplication()
     private val power = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+
+    @Test
+    fun updateRecoveryUsesFreshFrontAndRechecksPower() {
+        val controller = Robolectric.buildService(HomeGuardService::class.java).create()
+        val guard = controller.get()
+        val app = shadowOf(RuntimeEnvironment.getApplication())
+        ReflectionHelpers.setField(guard, "stockHomes", mapOf("vendor.home" to setOf("vendor.home.Home")))
+        fun front(pkg: String, sequence: Long) {
+            ReflectionHelpers.setField(guard, "lastWindow", pkg to "$pkg.Home")
+            ReflectionHelpers.setField(guard, "lastActivityWindowSequence", sequence)
+        }
+        fun finish() = ReflectionHelpers.callInstanceMethod<Unit>(guard, "recoverAfterUpdate",
+            ReflectionHelpers.ClassParameter.from(Long::class.javaPrimitiveType, 1L))
+        try {
+            shadowOf(power).setIsInteractive(true)
+            front("vendor.home", 1) // An old window is not current evidence.
+            finish(); assertNull(app.nextStartedActivity)
+            front("video.app", 2) // User switched during the delay.
+            finish(); assertNull(app.nextStartedActivity)
+            front("vendor.home", 3)
+            shadowOf(power).setIsInteractive(false)
+            finish(); assertNull(app.nextStartedActivity)
+            shadowOf(power).setIsInteractive(true)
+            finish(); assertNotNull(app.nextStartedActivity)
+        } finally { controller.destroy() }
+    }
 
     @Test
     fun reconnectDuringStandbyRemovesKeyFilterAndScreenOnRestoresIt() {
