@@ -4,7 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
-import android.net.Uri
+import androidx.core.net.toUri
 
 /** Update completion may uncover an installer or Home; an unknown front belongs to the viewer. */
 internal object UpdateRecovery {
@@ -17,7 +17,7 @@ internal object UpdateRecovery {
     @Suppress("DEPRECATION") // The int-flags API also runs on Android 5.
     fun isSystemInstaller(context: Context, pkg: String): Boolean {
         val intent = Intent(Intent.ACTION_VIEW).setDataAndType(
-            Uri.parse("content://app.orchard.tv.update/aerial.apk"), "application/vnd.android.package-archive",
+            "content://app.orchard.tv.update/aerial.apk".toUri(), "application/vnd.android.package-archive",
         )
         return runCatching {
             context.packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY).any {

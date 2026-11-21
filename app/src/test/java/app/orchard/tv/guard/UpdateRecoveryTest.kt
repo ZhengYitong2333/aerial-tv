@@ -38,11 +38,6 @@ class UpdateRecoveryTest {
             addCategory(Intent.CATEGORY_DEFAULT); addDataScheme("content")
             addDataType("application/vnd.android.package-archive")
         })
-        val intent = Intent(Intent.ACTION_VIEW).setDataAndType(
-            android.net.Uri.parse("content://app.orchard.tv.update/aerial.apk"), "application/vnd.android.package-archive")
-        pm.setResolveInfosForIntent(intent, listOf(android.content.pm.ResolveInfo().apply {
-            activityInfo = info; isDefault = true
-        }))
         assertFalse(UpdateRecovery.isSystemInstaller(app, component.packageName))
         info.applicationInfo.flags = info.applicationInfo.flags or ApplicationInfo.FLAG_SYSTEM
         pm.getInternalMutablePackageInfo(component.packageName).applicationInfo!!.apply { flags = flags or ApplicationInfo.FLAG_SYSTEM }
