@@ -20,8 +20,8 @@ android {
         minSdk = 21
         targetSdk = 34
         // Keep local builds ahead of upstream APKs so in-app updates cannot discard local patches.
-        versionCode = 10003
-        versionName = "2.15-local.3"
+        versionCode = 10004
+        versionName = "2.16-local.1"
         // `./gradlew -Pdiag ...`: a build for one reporter's TV whose logcat shows no app lines;
         // see system/DiagLog.kt.
         val diag = project.hasProperty("diag")
