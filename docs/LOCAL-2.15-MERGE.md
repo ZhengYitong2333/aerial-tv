@@ -1,4 +1,52 @@
-# 本地合并记录：Aerial 2.15
+# 本地合并记录：Aerial 2.15 / 2.16
+
+## 合并上游 2.16：2.16-local.1
+
+2026-11-22：将上游 [v2.16](https://github.com/pengchujin/aerial-tv/releases/tag/v2.16)（`22f9ad8`，versionCode 159）合入本地 main，完整版本为 `2.16-local.1`（versionCode 10004）；guard 带 `-guard` 后缀，Lite 为 `1.39-local.1`（41）。合并提交 `195d269`，回退分支 `backup/pre-2.16-20261122`（合并前本地 9 个提交，merge-base `c9a84b1`，即 v2.15）。
+
+上游本次带来五项修复和若干机型记录：
+
+- **#1689 自身升级后顶掉别的 App**：升级后守护的接管只在前台是安装器、应用商店或原厂桌面时进行。本地在 local.3 已用更严格的 `UpdateRecovery.shouldRestore` 实现同一目标，因此保留本地实现。
+- **#1707 小米 ASTP0 亮度**：`getAccessoryService` 在槽位 81（槽位 80 变成 `getTvEventLogService`），按返回 binder 的描述符选槽位。`MitvPanel.kt` 与 Lite 共享。
+- **#1708 / #1701 电量 0% 或状态未知**：不显示电量，完整版和 Lite 都改。
+- **#1677 海尔 YunOS 信号源**：HDMI 走 `com.haier.tv.menusetting/.RootActivity`，带 `isNewSource=1`、`sourceid=<硬件编号>`，仅在该 Activity 导出且无需额外权限时使用。
+- **#1646 屏保时钟字距**：首页显示大时钟时，屏保自己的时钟沿用大时钟的字形和字距。
+- 文档：创维 8H651_F1P / 7T633_A3F / 9S94_S9A 与 bigfish 的 `filterHomeAlways`（#1518）、海信 MSD6A828 主页键先闪（#1703 #1693 #1696 #1684）、影科 T8 投影（#1706）、东芝 55U3800C（#1687）；新增 `docs/devices/ffalcon-t966d5.md` 的 TCL 65V8M Pro 记录（#1698）。
+
+### 冲突与取舍
+
+只有三处冲突：
+
+1. `app/build.gradle.kts`：上游把 versionCode 改成 159。保留本地高 versionCode 策略，改为 10004，versionName `2.16-local.1`。
+2. `lite/build.gradle.kts`：上游把 Lite 改成 `1.39`（41）。versionCode 41 与上游相同，versionName 采用 `1.39-local.1` 以免与上游包混淆。
+3. `HomeGuardService.kt` 的更新后接管分支：上游内联了 `frontByUsage()` + `isInstaller()` + `isStockHome()` 判断；本地调 `recoverAfterUpdate(windowsAtSchedule)`，其中 `UpdateRecovery.shouldRestore` 额外检查屏保状态（`interactive`）、解锁状态和调度后才到达的窗口事件，比上游更严格。保留本地调用，删除因此不再被引用的上游 `isInstaller` 辅助函数（`UpdateRecovery.isSystemInstaller` 用 `queryIntentActivities` 查真实系统安装器，语义更强）。
+
+其余 16 个上游文件无冲突，直接合入。本地 9 个提交（#1689/#1694/#1690 实现、版本策略、诊断、PIN、恢复快照等）全部保留。
+
+### 验证结果
+
+| 检查 | 结果 |
+| --- | --- |
+| standard 单测 | 343 通过，0 失败、0 错误、0 跳过 |
+| guard 单测 | 343 通过，0 失败、0 错误、0 跳过 |
+| Lite 单测 | 7 通过，0 失败、0 错误、0 跳过 |
+| standard / guard 完整 lint | 各 0 错误、108 警告、1 提示 |
+| Lite 完整 lint | 0 错误、147 警告 |
+| lint 对比 local.3 | 三个包的 issue ID 和消息逐项相同，无新增、无消失 |
+| 三个 release APK | 构建成功，签名校验通过 |
+
+本轮跑的是 **release** 单测（`testStandardReleaseUnitTest` / `testGuardReleaseUnitTest` / `testReleaseUnitTest`），即实际出包的变体；上一份归档保存的是 debug 测试树。归档中的单测报告和 `verification.json` 记录的是本轮 release 结果。
+
+三个包签名均为 `cbcc6032a27fbb1bf52f35ef99600e193f966ea9bba65c92db021b6e218ff4c3`，与 `2.15-local.3-artifacts/` 相同，可覆盖安装已装的版本。APK 内 API 28 / 31 的 `.dm` 已提取，manifest 中 versionCode 为 10004、包含 `primary.prof`。standard / guard 已核对 minSdk 21、非 debuggable、HOME 声明差异、DUMP 导出权限、复活服务签名权限。
+
+产物：`local/2.16-local.1-artifacts/`，含三个 APK、`.dm`、manifest、签名日志、release 单测报告、lint 报告和 `verification.json`。复跑核验：`python3 local/verify-2.16-local1.py`。`local/` 不提交。
+
+### 未验证
+
+- 本次只做了构建、单测和静态检查；之后只把 guard 10004 装到 **TCL 65V8M Pro**（ADB 装被 TCL 校验拒绝，走 `tools/tcast-push.py` 多屏互动，装完 `compile -m speed` 为 `speed`；守护 bound、按主页键从 TCL 桌面回到 Aerial、桌面视频壁纸照常起播）。**Z7X 未装**，Lite 未装。
+- 上游 #1707 / #1708 / #1677 / #1646 的修复都只有上游自己的记录；合并进本机不代表在这两台电视上验证过。小米亮度问题与 TCL 无关，TCL 无电池。
+- 本机 `filterHomeAlways` 实验配置仍在电视上（见 `TCL/设备配置.md`），合并后的包未重新验证该配置下的行为。
+- 82 项离线脚本测试本轮未重跑，沿用 local.1 / local.3 的记录。
 
 ## 近期 issue 修补：2.15-local.3
 
