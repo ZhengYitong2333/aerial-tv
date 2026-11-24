@@ -145,7 +145,7 @@ fun ControlCenter(
             CcPage.Main -> onClose()
             CcPage.Inputs -> vm.overlay = Overlay.ControlCenter(CcPage.Main)
             CcPage.InputSettings -> vm.overlay = Overlay.ControlCenter(CcPage.Inputs)
-            CcPage.Utilities, CcPage.Update, CcPage.Setup -> vm.overlay = Overlay.ControlCenter(CcPage.Main)
+            CcPage.Extensions, CcPage.Utilities, CcPage.Update, CcPage.Setup -> vm.overlay = Overlay.ControlCenter(CcPage.Main)
         }
     }
 
@@ -213,6 +213,7 @@ fun ControlCenter(
                             CcPage.Inputs -> InputsPage(vm, visible, onOpen)
                             CcPage.InputSettings -> InputSettingsPage(vm, visible)
                             CcPage.Update -> UpdatePage(vm, visible)
+                            CcPage.Extensions -> ExtensionsPage(vm, visible)
                             CcPage.Utilities -> UtilitiesPage(vm, visible, onOpen)
                             CcPage.Setup -> SetupPage(vm, visible, onOpen)
                         }
@@ -388,6 +389,9 @@ private fun MainPage(
         )
         MenuRow(Glyph.Gear, stringResource(R.string.cc_utilities), onClick = {
             vm.whenUnlocked { vm.overlay = Overlay.ControlCenter(CcPage.Utilities) }
+        })
+        MenuRow(Glyph.Gear, stringResource(R.string.cc_extensions), onClick = {
+            vm.whenUnlocked { vm.overlay = Overlay.ControlCenter(CcPage.Extensions) }
         })
         // What the TV opens when switched on: easy to forget, and puzzling when it happens.
         vm.bootTargetLabel()?.let { name ->
@@ -1032,5 +1036,51 @@ internal fun ResourceReadout() {
     }
     sample?.let { (cpu, ram) ->
         BasicText(stringResource(R.string.cc_sample, cpu, ram), style = Type.Caption.copy(color = Palette.Label))
+    }
+}
+
+@Composable
+private fun ExtensionsPage(vm: HomeViewModel, visible: Boolean) {
+    val context = LocalContext.current
+    val extensions = app.orchard.tv.apps.HomeExtensions
+    val first = remember { FocusRequester() }
+    var cards by remember { mutableStateOf(emptyList<app.orchard.tv.apps.HomeExtensions.Card>()) }
+    LaunchedEffect(visible) {
+        if (visible) {
+            first.requestFocus()
+            cards = withContext(Dispatchers.IO) { extensions.cards(context) }
+        }
+    }
+    Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState())) {
+        MenuRow(Glyph.ChevronLeft, stringResource(R.string.cc_extensions), focusRequester = first,
+            onClick = { vm.overlay = Overlay.ControlCenter(CcPage.Main) })
+        extensions.preview?.let { theme ->
+            var thumbnail by remember(theme.wallpaper) { mutableStateOf<ImageBitmap?>(null) }
+            LaunchedEffect(theme.wallpaper) {
+                thumbnail = withContext(Dispatchers.IO) {
+                    app.orchard.tv.wallpaper.Wallpapers.thumbnail(theme.wallpaper)?.asImageBitmap()
+                }
+            }
+            Box(Modifier.fillMaxWidth().height(82.dp), contentAlignment = Alignment.BottomCenter) {
+                thumbnail?.let { Image(it, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
+                Row(Modifier.padding(6.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                    repeat(theme.columns) {
+                        Spacer(Modifier.weight(1f).height(14.dp).background(Color(android.graphics.Color.parseColor(theme.accent)),
+                            RoundedCornerShape(2.dp)))
+                    }
+                }
+            }
+            BasicText(theme.title, style = Type.Body.copy(color = Palette.Label))
+            MenuRow(Glyph.Photo, stringResource(R.string.cc_apply_theme), onClick = { extensions.apply(context, theme) })
+        }
+        MenuRow(Glyph.Photo, stringResource(R.string.cc_reset_theme), onClick = { extensions.reset(context) })
+        for (card in cards) {
+            var allowed by remember(card.grantKey) { mutableStateOf(extensions.allowed(context, card)) }
+            ChoiceRow(listOf(card.title, card.summary).filter { it.isNotBlank() }.joinToString(" · "), allowed, null) {
+                allowed = !allowed
+                extensions.allow(context, card, allowed)
+                vm.reload()
+            }
+        }
     }
 }
