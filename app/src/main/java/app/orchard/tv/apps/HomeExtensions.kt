@@ -21,7 +21,7 @@ data class HomeTheme(val title: String, val accent: String, val wallpaper: Strin
             require(raw.length <= 4096)
             val data = JSONObject(raw)
             return HomeTheme(data.getString("title").trim(), data.getString("accent"),
-                data.getString("wallpaper"), data.getInt("columns")).also {
+                data.getString("wallpaper"), data.get("columns") as? Int ?: error("Expected integer columns")).also {
                 require(it.title.length in 1..64 && it.accent.matches(Regex("#[0-9a-fA-F]{6}")))
                 require(it.columns in AerialSettings.HOME_COLUMNS && it.wallpaper in Wallpapers.FEATURED_BUILTINS)
             }
@@ -88,12 +88,16 @@ object HomeExtensions {
         prefs(context).edit().apply { if (yes) putBoolean(card.grantKey, true) else remove(card.grantKey) }.apply()
     }
 
-    fun entries(context: Context): List<AppEntry> = cards(context).filter { allowed(context, it) }.mapNotNull { card ->
-        runCatching {
-            val icon = context.packageManager.getActivityIcon(card.component)
-            AppEntry("card:" + card.component.flattenToString(), card.title, card.component, false, false,
-                TileArtFactory.fromIcon(icon), shortcut = Intent(CARD_ACTION).setComponent(card.component)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        }.getOrNull()
+    fun entries(context: Context): List<AppEntry> {
+        val grants = prefs(context).all.filterValues { it == true }.keys
+        if (grants.isEmpty()) return emptyList()
+        return cards(context).filter { it.grantKey in grants }.mapNotNull { card ->
+            runCatching {
+                val icon = context.packageManager.getActivityIcon(card.component)
+                AppEntry("card:" + card.component.flattenToString(), card.title, card.component, false, false,
+                    TileArtFactory.fromIcon(icon), shortcut = Intent(CARD_ACTION).setComponent(card.component)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }.getOrNull()
+        }
     }
 }
